@@ -1,112 +1,85 @@
 <template>
   <div class="student-container">
-    
-    <!-- SECTION 1: FORM INPUT SISWA & TOPIK -->
-    <div class="card card-input">
-      <!-- Enter Student Name / ID -->
-      <div class="form-group">
-        <label class="form-label">
-          <span class="label-icon">👤</span>
-          Enter Student Name / ID:
-        </label>
-        <input
-          v-model="studentName"
-          type="text"
-          class="form-input"
-          placeholder="e.g. Student 01"
+    <!-- Header Station -->
+    <div class="card header-card">
+      <div class="user-info">
+        <label>Student Name:</label>
+        <input 
+          v-model="studentName" 
+          type="text" 
+          placeholder="Enter your name..." 
+          class="name-input"
         />
       </div>
+    </div>
 
-      <!-- Select Practice Topic -->
-      <div class="form-group">
-        <label class="form-label">
-          <span class="label-icon">📚</span>
-          Select Practice Topic:
-        </label>
-        <div class="select-wrapper">
-          <select 
-            v-model="selectedTopicId" 
-            class="form-select"
-            @change="onTopicChange"
-            :disabled="topicsList.length === 0"
+    <!-- Active Topic & Question Card -->
+    <div class="card main-card" v-if="currentTopic">
+      <div class="topic-badge">📌 {{ currentTopic.title }} ({{ currentTopic.targetLevel }})</div>
+      
+      <!-- Display Image if Available -->
+      <div v-if="currentTopic.imageUrl" class="image-wrapper">
+        <img :src="currentTopic.imageUrl" alt="Topic Image" class="topic-image" />
+      </div>
+
+      <!-- Current Question Box -->
+      <div class="question-box">
+        <h3>Question {{ currentQuestionIndex + 1 }} of {{ currentTopic.questions.length }}:</h3>
+        <p class="question-text">"{{ currentQuestion }}"</p>
+        
+        <button class="btn-replay" @click="speakQuestion(currentQuestion)">
+          🔊 Listen Again
+        </button>
+      </div>
+
+      <!-- Recording / Answering Section -->
+      <div class="answer-section">
+        <button 
+          :class="['btn-mic', isListening ? 'recording' : '']" 
+          @click="toggleListening"
+          :disabled="!studentName.trim()"
+        >
+          <span class="mic-icon">{{ isListening ? '⏹️' : '🎙️' }}</span>
+          {{ isListening ? 'Listening... (Click to Stop)' : 'Click to Answer (Speak)' }}
+        </button>
+        <p v-if="!studentName.trim()" class="warning-text">⚠️ Please enter your name first to answer.</p>
+
+        <!-- Live Preview Transcribed Text -->
+        <div class="transcript-box mt-15">
+          <label>Your Spoken Answer (Live Preview):</label>
+          <p class="transcript-text">{{ spokenText || 'Your speech will appear here...' }}</p>
+        </div>
+
+        <!-- Navigation Buttons -->
+        <div class="action-row mt-20">
+          <button 
+            class="btn btn-secondary" 
+            @click="prevQuestion" 
+            :disabled="currentQuestionIndex === 0"
           >
-            <option v-if="topicsList.length === 0" value="" disabled>
-              Loading topics or no topics available...
-            </option>
-            <option 
-              v-for="topic in topicsList" 
-              :key="topic.id" 
-              :value="topic.id"
-            >
-              🐬 {{ topic.title }} ({{ topic.targetLevel }})
-            </option>
-          </select>
+            ◀ Previous
+          </button>
+          <button 
+            class="btn btn-primary" 
+            @click="nextQuestion" 
+            :disabled="currentQuestionIndex === currentTopic.questions.length - 1"
+          >
+            Next ▶
+          </button>
         </div>
       </div>
     </div>
 
-    <!-- SECTION 2: CARD PRACTICE / SOAL -->
-    <div class="card card-practice">
-      
-      <!-- IMAGE BOX (Mendukung Gambar Base64 / URL) -->
-      <div class="image-box">
-        <img 
-          v-if="currentTopic && currentTopic.imageUrl" 
-          :src="currentTopic.imageUrl" 
-          :alt="currentTopic.title"
-          class="uploaded-image"
-        />
-        <span v-else class="animal-emoji">🐬</span>
-      </div>
-
-      <!-- Detail Topik & Soal Dinamis -->
-      <div v-if="currentTopic" class="question-details">
-        <h2 class="topic-title">{{ currentTopic.title }}</h2>
-        <span class="question-step">
-          Question {{ currentQuestionIndex }} / {{ totalQuestions }}
-        </span>
-        <h3 class="question-text">
-          "{{ currentQuestionText }}"
-        </h3>
-      </div>
-      <div v-else class="question-details">
-        <h3 class="question-text">Pilih topik terlebih dahulu.</h3>
-      </div>
-
-      <!-- Navigation Buttons (Previous / Next) -->
-      <div class="nav-buttons">
-        <button
-          class="btn btn-prev"
-          :disabled="currentQuestionIndex === 1 || !currentTopic"
-          @click="prevQuestion"
-        >
-          ⬅️ Previous
-        </button>
-        <button
-          class="btn btn-next"
-          :disabled="currentQuestionIndex === totalQuestions || !currentTopic"
-          @click="nextQuestion"
-        >
-          Next ➡️
-        </button>
-      </div>
-
-      <!-- Start Session Button -->
-      <div class="action-button-wrapper">
-        <button class="btn btn-session" @click="toggleSession">
-          <span class="btn-icon">🎙️</span>
-          {{ isSessionActive ? 'Stop Continuous Session' : 'Start Continuous Session' }}
-        </button>
-      </div>
-
+    <!-- Empty State -->
+    <div v-else class="card empty-card">
+      <p>⏳ Waiting for teacher to select or upload a topic...</p>
     </div>
-
   </div>
 </template>
 
 <script>
 import { db } from '@/firebase'
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore'
+import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp } from 'firebase/firestore'
 
 export default {
   name: 'Student',
@@ -114,83 +87,144 @@ export default {
     return {
       studentName: '',
       topicsList: [],
-      selectedTopicId: '',
       currentTopic: null,
-      currentQuestionIndex: 1,
-      isSessionActive: false
+      currentQuestionIndex: 0,
+      spokenText: '',
+      isListening: false,
+      recognition: null,
+      startTime: null
     }
   },
   computed: {
-    totalQuestions() {
-      return this.currentTopic && this.currentTopic.questions 
-        ? this.currentTopic.questions.length 
-        : 0
-    },
-    currentQuestionText() {
-      if (this.currentTopic && this.currentTopic.questions && this.currentTopic.questions.length > 0) {
-        return this.currentTopic.questions[this.currentQuestionIndex - 1]
-      }
-      return 'Tidak ada soal pada topik ini.'
+    currentQuestion() {
+      if (!this.currentTopic || !this.currentTopic.questions) return ''
+      return this.currentTopic.questions[this.currentQuestionIndex] || ''
     }
   },
   mounted() {
-    // Sync data realtime dari Firestore
-    const q = query(collection(db, 'topics'), orderBy('createdAt', 'desc'))
-    onSnapshot(q, (snapshot) => {
-      this.topicsList = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }))
-
-      if (this.topicsList.length > 0) {
-        // Jika belum ada topik terpilih, pilih topik pertama secara otomatis
-        if (!this.selectedTopicId) {
-          this.selectedTopicId = this.topicsList[0].id
-          this.currentTopic = this.topicsList[0]
-        } else {
-          // Jika topik terpilih sudah ada, perbarui datanya (misal ada pembaruan gambar/soal dari Teacher)
-          const found = this.topicsList.find(t => t.id === this.selectedTopicId)
-          if (found) {
-            this.currentTopic = found
-          } else {
-            // Jika topik yang sedang dibuka ternyata dihapus oleh Teacher, kembalikan ke topik pertama
-            this.selectedTopicId = this.topicsList[0].id
-            this.currentTopic = this.topicsList[0]
-            this.currentQuestionIndex = 1
-          }
-        }
-      } else {
-        // Jika semua topik terhapus di Firestore
-        this.selectedTopicId = ''
-        this.currentTopic = null
-      }
-    })
+    this.fetchTopics()
+    this.initSpeechRecognition()
   },
   methods: {
-    onTopicChange() {
-      this.currentTopic = this.topicsList.find(t => t.id === this.selectedTopicId)
-      this.currentQuestionIndex = 1
+    // 1. Fetch Topik Terbaru dari Firestore
+    fetchTopics() {
+      const q = query(collection(db, 'topics'), orderBy('createdAt', 'desc'), limit(1))
+      onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          this.topicsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+          this.currentTopic = this.topicsList[0]
+          this.currentQuestionIndex = 0
+          
+          // Bacakan soal pertama secara otomatis saat topik dimuat
+          this.$nextTick(() => {
+            if (this.currentQuestion) {
+              this.speakQuestion(this.currentQuestion)
+            }
+          })
+        }
+      })
     },
-    prevQuestion() {
-      if (this.currentQuestionIndex > 1) {
-        this.currentQuestionIndex--
+
+    // 2. TEXT-TO-SPEECH (AI Membacakan Soal)
+    speakQuestion(text) {
+      if ('speechSynthesis' in window && text) {
+        window.speechSynthesis.cancel() // Hentikan audio sebelumnya jika ada
+        const utterance = new SpeechSynthesisUtterance(text)
+        
+        // Gunakan aiVoice dari Firestore jika ada, atau default ke en-US
+        utterance.lang = this.currentTopic?.aiVoice || 'en-US'
+        utterance.rate = 0.85 // Kecepatan agak pelan untuk siswa
+        
+        window.speechSynthesis.speak(utterance)
       }
     },
-    nextQuestion() {
-      if (this.currentQuestionIndex < this.totalQuestions) {
-        this.currentQuestionIndex++
+
+    // 3. SPEECH RECOGNITION (Merekam & Mengonversi Suara Siswa ke Teks)
+    initSpeechRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+      if (SpeechRecognition) {
+        this.recognition = new SpeechRecognition()
+        this.recognition.continuous = true
+        this.recognition.interimResults = true
+        this.recognition.lang = 'en-US' // Menggunakan Bahasa Inggris
+
+        this.recognition.onresult = (event) => {
+          let transcript = ''
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript
+          }
+          this.spokenText = transcript
+        }
+
+        this.recognition.onerror = (event) => {
+          console.error('Speech recognition error:', event.error)
+          this.isListening = false
+        }
+
+        this.recognition.onend = () => {
+          this.isListening = false
+        }
       }
     },
-    toggleSession() {
-      if (!this.studentName.trim()) {
-        alert('Mohon isi nama terlebih dahulu!')
+
+    toggleListening() {
+      if (!this.recognition) {
+        alert('Browser kamu belum mendukung Speech Recognition. Gunakan Chrome atau Edge.')
         return
       }
-      this.isSessionActive = !this.isSessionActive
-      if (this.isSessionActive) {
-        alert(`Continuous Voice Session Started for ${this.studentName}!`)
+
+      if (this.isListening) {
+        // Stop Merekam & Kirim ke Firestore
+        this.recognition.stop()
+        this.isListening = false
+        this.saveLogToFirestore()
       } else {
-        alert('Session Ended.')
+        // Start Merekam
+        this.spokenText = ''
+        this.startTime = Date.now()
+        this.recognition.start()
+        this.isListening = true
+      }
+    },
+
+    // 4. KIRIM HASIL JAWABAN KE LOG FIRESTORE (Agar Tampil di Teacher.vue)
+    async saveLogToFirestore() {
+      if (!this.spokenText.trim() || !this.studentName.trim()) return
+
+      const responseTime = ((Date.now() - this.startTime) / 1000).toFixed(1) + 's'
+      
+      // Format log string yang akan dibaca di Teacher.vue
+      const logMessage = `[${this.studentName}] Q: "${this.currentQuestion}" -> Answer: "${this.spokenText}" (${responseTime})`
+
+      try {
+        await addDoc(collection(db, 'logs'), {
+          message: logMessage,
+          studentName: this.studentName,
+          topic: this.currentTopic.title,
+          question: this.currentQuestion,
+          spokenAnswer: this.spokenText,
+          responseTime: responseTime,
+          createdAt: serverTimestamp()
+        })
+      } catch (err) {
+        console.error('Gagal mengirim log:', err)
+      }
+    },
+
+    // Navigasi Soal
+    nextQuestion() {
+      if (this.currentQuestionIndex < this.currentTopic.questions.length - 1) {
+        this.currentQuestionIndex++
+        this.spokenText = ''
+        this.speakQuestion(this.currentQuestion)
+      }
+    },
+
+    prevQuestion() {
+      if (this.currentQuestionIndex > 0) {
+        this.currentQuestionIndex--
+        this.spokenText = ''
+        this.speakQuestion(this.currentQuestion)
       }
     }
   }
@@ -200,210 +234,200 @@ export default {
 <style scoped>
 .student-container {
   width: 100%;
-  max-width: 1000px;
+  max-width: 800px;
   margin: 20px auto;
   padding: 0 15px;
   box-sizing: border-box;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
 .card {
   background-color: #ffffff;
-  border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  border-radius: 12px;
   padding: 24px;
-  box-sizing: border-box;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
 }
 
-.form-group {
-  margin-bottom: 18px;
+.header-card {
+  background-color: #0077b6;
+  color: white;
 }
 
-.form-group:last-child {
-  margin-bottom: 0;
-}
-
-.form-label {
+.user-info {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 700;
-  color: #034078;
-  margin-bottom: 10px;
+  gap: 12px;
 }
 
-.label-icon {
-  font-size: 16px;
+.user-info label {
+  font-weight: bold;
 }
 
-.form-input,
-.form-select {
-  width: 100%;
-  height: 44px;
-  padding: 8px 16px;
-  font-size: 14px;
-  color: #1f2937;
-  background-color: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  box-sizing: border-box;
+.name-input {
+  flex: 1;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: none;
   outline: none;
-  transition: border-color 0.2s;
+  font-size: 14px;
 }
 
-.form-input::placeholder {
-  color: #9ca3af;
-}
-
-.form-select {
-  background-color: #e5e7eb;
-  cursor: pointer;
-  border-color: #e5e7eb;
-}
-
-.form-input:focus {
-  border-color: #0077b6;
-}
-
-.card-practice {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 36px 24px;
-}
-
-.image-box {
-  width: 240px;
-  height: 180px;
-  background-color: #e0f7fa;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 20px;
-  overflow: hidden;
-}
-
-.uploaded-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.animal-emoji {
-  font-size: 80px;
-}
-
-.question-details {
-  text-align: center;
-  margin-bottom: 28px;
-}
-
-.topic-title {
-  margin: 0 0 4px 0;
-  font-size: 22px;
-  font-weight: 800;
-  color: #003049;
-}
-
-.question-step {
-  font-size: 13px;
-  font-weight: 600;
-  color: #6b7280;
-  display: block;
-  margin-bottom: 12px;
-}
-
-.question-text {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 800;
-  color: #0077b6;
-}
-
-.nav-buttons {
-  display: flex;
-  width: 100%;
-  gap: 16px;
+.topic-badge {
+  display: inline-block;
+  background-color: #e0f2fe;
+  color: #0369a1;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 14px;
   margin-bottom: 16px;
 }
 
-.btn {
-  height: 46px;
+.image-wrapper {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.topic-image {
+  max-width: 100%;
+  max-height: 250px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.question-box {
+  background-color: #f8fafc;
+  border-left: 5px solid #0077b6;
+  padding: 16px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+}
+
+.question-box h3 {
+  margin: 0 0 8px 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.question-text {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.btn-replay {
+  background-color: #e2e8f0;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  color: #334155;
+}
+
+.btn-replay:hover {
+  background-color: #cbd5e1;
+}
+
+.answer-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.btn-mic {
+  width: 100%;
+  height: 54px;
+  background-color: #10b981;
+  color: white;
   border: none;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  transition: opacity 0.2s, transform 0.1s;
+  gap: 10px;
+  transition: background 0.2s;
 }
 
-.btn:active {
-  transform: scale(0.99);
+.btn-mic.recording {
+  background-color: #ef4444;
+  animation: pulse 1.5s infinite;
 }
 
-.btn:disabled {
-  opacity: 0.6;
+.btn-mic:disabled {
+  background-color: #9ca3af;
   cursor: not-allowed;
 }
 
-.btn-prev {
-  flex: 1;
-  background-color: #a0aec0;
-  color: #ffffff;
+.warning-text {
+  color: #dc2626;
+  font-size: 12px;
+  margin-top: 6px;
 }
 
-.btn-next {
-  flex: 1;
-  background-color: #0077b6;
-  color: #ffffff;
-}
-
-.action-button-wrapper {
+.transcript-box {
   width: 100%;
+  background-color: #f1f5f9;
+  padding: 12px;
+  border-radius: 8px;
+  box-sizing: border-box;
 }
 
-.btn-session {
-  width: 100%;
-  height: 48px;
-  background-color: #ef4444;
-  color: #ffffff;
+.transcript-box label {
+  font-size: 12px;
+  font-weight: bold;
+  color: #64748b;
+}
+
+.transcript-text {
+  margin: 4px 0 0 0;
   font-size: 15px;
+  color: #1e293b;
+  font-style: italic;
 }
 
-.btn-session:hover {
-  background-color: #dc2626;
+.action-row {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
 }
 
-.btn-icon {
-  font-size: 16px;
+.btn {
+  padding: 10px 20px;
+  border-radius: 6px;
+  border: none;
+  font-weight: bold;
+  cursor: pointer;
 }
 
-@media (max-width: 600px) {
-  .image-box {
-    width: 100%;
-    height: 160px;
-  }
+.btn-primary { background-color: #0077b6; color: white; }
+.btn-secondary { background-color: #94a3b8; color: white; }
 
-  .nav-buttons {
-    flex-direction: column;
-    gap: 10px;
-  }
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
-  .topic-title {
-    font-size: 20px;
-  }
+.empty-card {
+  text-align: center;
+  color: #64748b;
+}
 
-  .question-text {
-    font-size: 18px;
-  }
+.mt-15 { margin-top: 15px; }
+.mt-20 { margin-top: 20px; }
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
 }
 </style>

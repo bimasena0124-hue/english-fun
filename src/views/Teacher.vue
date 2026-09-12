@@ -52,12 +52,8 @@
         <div class="form-group">
           <label class="form-label">4. Select AI Voice:</label>
           <select v-model="formData.aiVoice" class="form-select">
-            <option value="Microsoft David - English (United States) (en-US)">
-              Microsoft David - English (United States) (en-US)
-            </option>
-            <option value="Microsoft Zira - English (United States) (en-US)">
-              Microsoft Zira - English (United States) (en-US)
-            </option>
+            <option value="en-US">English (United States) - Standard</option>
+            <option value="en-GB">English (United Kingdom) - Standard</option>
           </select>
         </div>
 
@@ -129,16 +125,24 @@
                   <span class="topic-badge">🐬 {{ topic.title }}</span>
                   <span class="level-badge">{{ topic.targetLevel }}</span>
                 </div>
-                <button class="btn-delete-small" @click="deleteTopic(topic.id, topic.title)">
-                  🗑️ Delete Topic
-                </button>
+                <div class="action-buttons">
+                  <button class="btn-voice-small" @click="speakAllQuestions(topic.questions)">
+                    🔊 Read All Questions
+                  </button>
+                  <button class="btn-delete-small" @click="deleteTopic(topic.id, topic.title)">
+                    🗑️ Delete Topic
+                  </button>
+                </div>
               </div>
 
               <div class="topic-questions">
                 <p class="question-label">Questions Preview:</p>
                 <ol class="question-ol">
-                  <li v-for="(q, index) in topic.questions" :key="index">
-                    "{{ q }}"
+                  <li v-for="(q, index) in topic.questions" :key="index" class="question-item">
+                    <span>"{{ q }}"</span>
+                    <button class="btn-speak-single" @click="speakText(q)" title="Play question audio">
+                      🔊
+                    </button>
                   </li>
                 </ol>
               </div>
@@ -192,6 +196,9 @@
         <div v-for="(log, idx) in logs" :key="idx" class="log-bubble">
           {{ log }}
         </div>
+        <div v-if="logs.length === 0" class="log-bubble empty-log">
+          Belum ada aktivitas interaksi dari siswa.
+        </div>
       </div>
     </div>
 
@@ -214,31 +221,63 @@ export default {
         targetLevel: 'Grade 1 Elementary',
         startDateTime: '',
         dueDateTime: '',
-        aiVoice: 'Microsoft David - English (United States) (en-US)',
+        aiVoice: 'en-US',
         topicTitle: '',
         questions: '',
         selectedFile: null
       },
       topicsList: [],
       topTenList: [],
-      logs: ['AI: Station Ready! Type your name and start speaking.']
+      logs: []
     }
   },
   mounted() {
-    // Fetch Data Topics Realtime dari Firestore
-    const q = query(collection(db, 'topics'), orderBy('createdAt', 'desc'))
-    onSnapshot(q, (snapshot) => {
+    // 1. Fetch Data Topics Realtime dari Firestore
+    const qTopics = query(collection(db, 'topics'), orderBy('createdAt', 'desc'))
+    onSnapshot(qTopics, (snapshot) => {
       this.topicsList = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }))
+    })
+
+    // 2. FETCH INTERACTION LOGS REALTIME DARI FIRESTORE
+    const qLogs = query(collection(db, 'logs'), orderBy('createdAt', 'desc'))
+    onSnapshot(qLogs, (snapshot) => {
+      if (!snapshot.empty) {
+        this.logs = snapshot.docs.map(doc => {
+          const data = doc.data()
+          return data.message || `[${data.studentName || 'Unknown'}] Q: "${data.question || '-'}" -> Answer: "${data.spokenAnswer || '-'}" (${data.responseTime || '0s'})`
+        })
+      } else {
+        this.logs = []
+      }
+    })
+
+    // 3. FETCH TOP TEN FASTEST REALTIME DARI FIRESTORE
+    const qTopTen = query(collection(db, 'logs'), orderBy('responseTime', 'asc'))
+    onSnapshot(qTopTen, (snapshot) => {
+      if (!snapshot.empty) {
+        this.topTenList = snapshot.docs.slice(0, 10).map((doc, index) => {
+          const data = doc.data()
+          return {
+            rank: index + 1,
+            studentName: data.studentName || '-',
+            topic: data.topic || '-',
+            responseTime: data.responseTime || '-',
+            spokenAnswer: data.spokenAnswer || '-',
+            fluency: 'Recorded'
+          }
+        })
+      } else {
+        this.topTenList = []
+      }
     })
   },
   methods: {
     async logout() {
       try {
         await signOut(auth)
-        // Setelah logout, router akan mengarahkan pengguna kembali ke halaman /login
         this.$router.push('/login')
       } catch (err) {
         console.error('Logout error:', err)
@@ -251,7 +290,6 @@ export default {
       this.formData.selectedFile = file || null
     },
 
-    // Konversi File ke Base64 String
     convertFileToBase64(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader()
@@ -318,6 +356,26 @@ export default {
       this.formData.questions = ''
       this.selectedFileName = ''
       this.formData.selectedFile = null
+    },
+
+    speakText(text) {
+      if ('speechSynthesis' in window && text) {
+        window.speechSynthesis.cancel()
+
+        const utterance = new SpeechSynthesisUtterance(text)
+        utterance.lang = this.formData.aiVoice || 'en-US'
+        utterance.rate = 0.9
+
+        window.speechSynthesis.speak(utterance)
+      } else {
+        alert('Fitur pemutar suara tidak didukung browser ini.')
+      }
+    },
+
+    speakAllQuestions(questionsArray) {
+      if (!questionsArray || questionsArray.length === 0) return
+      const fullText = questionsArray.join('. ')
+      this.speakText(fullText)
     }
   }
 }
@@ -336,7 +394,6 @@ export default {
   gap: 20px;
 }
 
-/* Header/Top Bar Logout */
 .top-bar {
   display: flex;
   justify-content: space-between;
@@ -454,7 +511,7 @@ export default {
 }
 
 .form-select {
-  background-color: #e5e7eb;
+  background-color: #f3f4f6;
 }
 
 .file-input-wrapper {
@@ -518,7 +575,6 @@ export default {
 
 .btn-warning { background-color: #d97706; }
 
-/* Styling Area Preview */
 .preview-section {
   background-color: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -567,6 +623,11 @@ export default {
   gap: 10px;
 }
 
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
 .topic-badge {
   font-weight: 700;
   font-size: 15px;
@@ -580,6 +641,23 @@ export default {
   padding: 2px 8px;
   border-radius: 12px;
   font-weight: 600;
+}
+
+.btn-voice-small {
+  background-color: #e0f2fe;
+  color: #0284c7;
+  border: 1px solid #7dd3fc;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-voice-small:hover {
+  background-color: #0284c7;
+  color: #ffffff;
 }
 
 .btn-delete-small {
@@ -613,8 +691,23 @@ export default {
   color: #334155;
 }
 
-.question-ol li {
+.question-item {
   margin-bottom: 4px;
+}
+
+.btn-speak-single {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  margin-left: 6px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.btn-speak-single:hover {
+  background-color: #e2e8f0;
 }
 
 .leaderboard-title {
@@ -669,10 +762,16 @@ export default {
   color: #003049;
 }
 
+/* Penyesuaian Scroll Container Log */
 .log-container {
   background-color: #f8fafc;
   border-radius: 8px;
   padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 350px;
+  overflow-y: auto;
 }
 
 .log-bubble {
@@ -681,6 +780,14 @@ export default {
   padding: 12px 18px;
   border-radius: 8px;
   font-size: 14px;
+  line-height: 1.4;
+}
+
+.empty-log {
+  background-color: #f1f5f9;
+  color: #64748b;
+  font-style: italic;
+  text-align: center;
 }
 
 @media (max-width: 768px) {
