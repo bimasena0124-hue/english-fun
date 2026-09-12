@@ -4,13 +4,13 @@
       <h2>{{ isRegisterMode ? 'Teacher Register' : 'Teacher Access' }}</h2>
 
       <form @submit.prevent="handleSubmit">
-        <!-- Input Nama Lengkap (Digunakan untuk Login & Register) -->
+        <!-- Input Username / Full Name -->
         <div class="form-group">
-          <label>Full Name</label>
+          <label>Username</label>
           <input 
             v-model="fullName" 
             type="text" 
-            placeholder="Enter your name" 
+            placeholder="Masukkan username (tanpa spasi)" 
             required 
           />
         </div>
@@ -63,16 +63,21 @@ export default {
     }
   },
   methods: {
-    // Fungsi bantuan untuk mengubah Nama menjadi Dummy Email unik
-    // Contoh: "Budi Santoso" -> "budi.santoso@teacher.local"
     generateDummyEmail(name) {
-      const cleanName = name.trim().toLowerCase().replace(/\s+/g, '.')
+      const cleanName = name.trim().toLowerCase()
       return `${cleanName}@teacher.local`
     },
 
     async handleSubmit() {
+      // 1. Cek apakah input kosong
       if (!this.fullName.trim()) {
-        alert('Silakan masukkan nama lengkap!')
+        alert('Silakan masukkan username!')
+        return
+      }
+
+      // 2. VALIDASI SPASI: Jika terdapat spasi, batalkan proses dan tampilkan alert
+      if (/\s/.test(this.fullName)) {
+        alert('Username tidak boleh menggunakan spasi! Silakan gunakan huruf/angka tanpa spasi.')
         return
       }
 
@@ -81,16 +86,14 @@ export default {
 
       try {
         if (this.isRegisterMode) {
-          // 1. PROSES REGISTRASI DENGAN NAMA + DUMMY EMAIL
+          // PROSES REGISTRASI
           const userCredential = await createUserWithEmailAndPassword(auth, generatedEmail, this.password)
           const user = userCredential.user
 
-          // Simpan nama di profil Firebase Auth
           await updateProfile(user, {
             displayName: this.fullName
           })
 
-          // Simpan data ke Firestore koleksi 'teachers'
           await setDoc(doc(db, 'teachers', user.uid), {
             uid: user.uid,
             name: this.fullName,
@@ -100,18 +103,17 @@ export default {
 
           alert('Registrasi berhasil!')
         } else {
-          // 2. PROSES LOGIN (Memakai Nama yang diubah ke Dummy Email)
+          // PROSES LOGIN
           await signInWithEmailAndPassword(auth, generatedEmail, this.password)
         }
 
-        // Redirect ke dashboard guru
         this.$router.push('/teacher')
 
       } catch (err) {
         if (err.code === 'auth/email-already-in-use') {
-          alert('Nama ini sudah terdaftar. Silakan login atau gunakan nama lain.')
+          alert('Username ini sudah terdaftar. Silakan login atau gunakan username lain.')
         } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
-          alert('Nama atau Password salah!')
+          alert('Username atau Password salah!')
         } else {
           alert('Gagal: ' + err.message)
         }
