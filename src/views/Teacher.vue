@@ -12,19 +12,19 @@
       <div class="card-header" @click="isExpanded = !isExpanded">
         <span class="accordion-arrow">{{ isExpanded ? '▼' : '▶' }}</span>
         <span class="header-icon">⚙️</span>
-        <h2 class="header-title">Teacher Setup & Shareable Link Generator (Click to expand)</h2>
+        <h2 class="header-title">Teacher Setup & Topic Generator</h2>
       </div>
 
       <!-- Content / Form -->
       <div v-show="isExpanded" class="card-body">
         <!-- Target Level Name -->
         <div class="form-group">
-          <label class="form-label">1. Target Level Name:</label>
+          <label class="form-label">1. Target Level Name (Primary Key / Group):</label>
           <input
             v-model="formData.targetLevel"
             type="text"
             class="form-input"
-            placeholder="Grade 1 Elementary"
+            placeholder="e.g. Grade 1 Elementary / Beginner"
           />
         </div>
 
@@ -105,7 +105,7 @@
               @click="saveTopic"
             >
               <span class="btn-icon">+</span> 
-              {{ isUploading ? 'Uploading & Saving...' : 'Save New Topic' }}
+              {{ isUploading ? 'Uploading & Saving...' : 'Save New Topic & Level' }}
             </button>
           </div>
         </div>
@@ -207,7 +207,7 @@
 
 <script>
 import { db, auth } from '@/firebase'
-import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore'
+import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, setDoc } from 'firebase/firestore'
 import { signOut } from 'firebase/auth'
 
 export default {
@@ -232,7 +232,7 @@ export default {
     }
   },
   mounted() {
-    // 1. Fetch Data Topics Realtime dari Firestore
+    // 1. Fetch Topics Realtime
     const qTopics = query(collection(db, 'topics'), orderBy('createdAt', 'desc'))
     onSnapshot(qTopics, (snapshot) => {
       this.topicsList = snapshot.docs.map(doc => ({
@@ -241,7 +241,7 @@ export default {
       }))
     })
 
-    // 2. FETCH INTERACTION LOGS REALTIME DARI FIRESTORE
+    // 2. Fetch Interaction Logs Realtime
     const qLogs = query(collection(db, 'logs'), orderBy('createdAt', 'desc'))
     onSnapshot(qLogs, (snapshot) => {
       if (!snapshot.empty) {
@@ -254,8 +254,8 @@ export default {
       }
     })
 
-    // 3. FETCH TOP TEN FASTEST REALTIME DARI FIRESTORE
-    const qTopTen = query(collection(db, 'logs'), orderBy('responseTime', 'asc'))
+    // 3. Fetch Top Ten Fastest Realtime
+    const qTopTen = query(collection(db, 'logs'), orderBy('responseTimeNum', 'asc'))
     onSnapshot(qTopTen, (snapshot) => {
       if (!snapshot.empty) {
         this.topTenList = snapshot.docs.slice(0, 10).map((doc, index) => {
@@ -266,7 +266,7 @@ export default {
             topic: data.topic || '-',
             responseTime: data.responseTime || '-',
             spokenAnswer: data.spokenAnswer || '-',
-            fluency: 'Recorded'
+            fluency: `Score: ${data.spellingScore || 0}%`
           }
         })
       } else {
@@ -300,6 +300,11 @@ export default {
     },
 
     async saveTopic() {
+      if (!this.formData.targetLevel.trim()) {
+        alert('Isi Target Level Name terlebih dahulu!')
+        return
+      }
+
       if (!this.formData.topicTitle.trim()) {
         alert('Isi Topic Title terlebih dahulu!')
         return
@@ -309,7 +314,6 @@ export default {
 
       try {
         let imageUrl = ''
-
         if (this.formData.selectedFile) {
           imageUrl = await this.convertFileToBase64(this.formData.selectedFile)
         }
@@ -319,10 +323,19 @@ export default {
           .map(q => q.trim())
           .filter(q => q !== '')
 
+        const levelName = this.formData.targetLevel.trim()
+
+        // 1. Simpan/Update Level di Firestore (Supaya otomatis muncul di dropdown Student)
+        await setDoc(doc(db, 'levels', levelName), {
+          name: levelName,
+          createdAt: serverTimestamp()
+        }, { merge: true })
+
+        // 2. Simpan Topik dengan Target Level sebagai Key Relasi
         await addDoc(collection(db, 'topics'), {
           title: this.formData.topicTitle,
           questions: questionsArray,
-          targetLevel: this.formData.targetLevel,
+          targetLevel: levelName,
           startDateTime: this.formData.startDateTime,
           dueDateTime: this.formData.dueDateTime,
           aiVoice: this.formData.aiVoice,
@@ -330,7 +343,7 @@ export default {
           createdAt: serverTimestamp()
         })
 
-        alert(`Topik "${this.formData.topicTitle}" berhasil tersimpan!`)
+        alert(`Topik "${this.formData.topicTitle}" untuk level "${levelName}" berhasil tersimpan!`)
         this.clearForm()
       } catch (err) {
         console.error('Error menyimpan topik:', err)
@@ -361,11 +374,9 @@ export default {
     speakText(text) {
       if ('speechSynthesis' in window && text) {
         window.speechSynthesis.cancel()
-
         const utterance = new SpeechSynthesisUtterance(text)
         utterance.lang = this.formData.aiVoice || 'en-US'
         utterance.rate = 0.9
-
         window.speechSynthesis.speak(utterance)
       } else {
         alert('Fitur pemutar suara tidak didukung browser ini.')
@@ -404,396 +415,136 @@ export default {
   box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
 
-.auth-status {
-  font-size: 14px;
-  font-weight: 600;
-  color: #166534;
-}
+.auth-status { font-size: 14px; font-weight: 600; color: #166534; }
 
 .btn-logout {
-  background-color: #ef4444;
-  color: #ffffff;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
+  background-color: #ef4444; color: #ffffff; border: none;
+  padding: 8px 16px; border-radius: 6px; font-weight: 600;
+  cursor: pointer; transition: background 0.2s;
 }
-
-.btn-logout:hover {
-  background-color: #dc2626;
-}
+.btn-logout:hover { background-color: #dc2626; }
 
 .card {
-  background-color: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.04);
-  overflow: hidden;
+  background-color: #ffffff; border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.04); overflow: hidden;
 }
-
-.card-setup {
-  border-left: 6px solid #d97706;
-}
-
-.card-section {
-  padding: 20px 24px;
-}
+.card-setup { border-left: 6px solid #d97706; }
+.card-section { padding: 20px 24px; }
 
 .card-header {
-  display: flex;
-  align-items: center;
-  padding: 18px 24px;
-  cursor: pointer;
-  user-select: none;
-  background-color: #ffffff;
+  display: flex; align-items: center; padding: 18px 24px;
+  cursor: pointer; user-select: none; background-color: #ffffff;
 }
+.accordion-arrow { color: #d97706; font-size: 12px; margin-right: 8px; }
+.header-icon { font-size: 18px; margin-right: 8px; }
+.header-title { margin: 0; font-size: 18px; font-weight: 700; color: #c2410c; }
 
-.accordion-arrow {
-  color: #d97706;
-  font-size: 12px;
-  margin-right: 8px;
-}
-
-.header-icon {
-  font-size: 18px;
-  margin-right: 8px;
-}
-
-.header-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  color: #c2410c;
-}
-
-.card-body {
-  padding: 0 24px 24px 24px;
-}
-
-.form-group {
-  margin-bottom: 16px;
-}
-
-.form-row {
-  display: flex;
-  gap: 20px;
-}
-
-.col {
-  flex: 1;
-}
+.card-body { padding: 0 24px 24px 24px; }
+.form-group { margin-bottom: 16px; }
+.form-row { display: flex; gap: 20px; }
+.col { flex: 1; }
 
 .mt-10 { margin-top: 10px; }
 .mt-15 { margin-top: 15px; }
 .mt-20 { margin-top: 20px; }
 
-.form-label {
-  display: block;
-  font-size: 15px;
-  font-weight: 700;
-  color: #034078;
-  margin-bottom: 8px;
-}
+.form-label { display: block; font-size: 15px; font-weight: 700; color: #034078; margin-bottom: 8px; }
 
-.form-input,
-.form-select {
-  width: 100%;
-  height: 42px;
-  padding: 8px 14px;
-  font-size: 14px;
-  color: #1f2937;
-  background-color: #ffffff;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  box-sizing: border-box;
-  outline: none;
+.form-input, .form-select {
+  width: 100%; height: 42px; padding: 8px 14px; font-size: 14px;
+  color: #1f2937; background-color: #ffffff; border: 1px solid #d1d5db;
+  border-radius: 8px; box-sizing: border-box; outline: none;
 }
+.form-select { background-color: #f3f4f6; }
 
-.form-select {
-  background-color: #f3f4f6;
-}
-
-.file-input-wrapper {
-  width: 100%;
-}
-
-.file-input-hidden {
-  display: none;
-}
-
+.file-input-wrapper { width: 100%; }
+.file-input-hidden { display: none; }
 .file-input-label {
-  display: flex;
-  align-items: center;
-  height: 42px;
-  padding: 0 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  background-color: #ffffff;
-  cursor: pointer;
-  box-sizing: border-box;
+  display: flex; align-items: center; height: 42px; padding: 0 10px;
+  border: 1px solid #d1d5db; border-radius: 8px; background-color: #ffffff;
+  cursor: pointer; box-sizing: border-box;
 }
-
 .btn-browse {
-  background-color: #f3f4f6;
-  border: 1px solid #d1d5db;
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 13px;
-  color: #1f2937;
-  margin-right: 10px;
+  background-color: #f3f4f6; border: 1px solid #d1d5db; padding: 4px 10px;
+  border-radius: 4px; font-size: 13px; color: #1f2937; margin-right: 10px;
 }
+.file-name { font-size: 14px; color: #374151; }
 
-.file-name {
-  font-size: 14px;
-  color: #374151;
-}
-
-.divider {
-  border-bottom: 1px dashed #fcd34d;
-  margin: 20px 0;
-}
+.divider { border-bottom: 1px dashed #fcd34d; margin: 20px 0; }
 
 .btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 46px;
-  padding: 0 20px;
-  font-size: 15px;
-  font-weight: 700;
-  color: #ffffff;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 46px; padding: 0 20px; font-size: 15px; font-weight: 700;
+  color: #ffffff; border: none; border-radius: 8px; cursor: pointer;
 }
-
-.btn-icon {
-  margin-right: 8px;
-  font-size: 16px;
-}
-
+.btn-icon { margin-right: 8px; font-size: 16px; }
 .btn-warning { background-color: #d97706; }
 
 .preview-section {
-  background-color: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 16px;
+  background-color: #f8fafc; border: 1px solid #e2e8f0;
+  border-radius: 10px; padding: 16px;
 }
+.preview-title { margin: 0 0 12px 0; font-size: 15px; font-weight: 700; color: #034078; }
+.empty-preview { font-size: 13px; color: #64748b; font-style: italic; }
 
-.preview-title {
-  margin: 0 0 12px 0;
-  font-size: 15px;
-  font-weight: 700;
-  color: #034078;
-}
-
-.empty-preview {
-  font-size: 13px;
-  color: #64748b;
-  font-style: italic;
-}
-
-.topic-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.topic-card {
-  background-color: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 12px 16px;
-}
-
+.topic-list { display: flex; flex-direction: column; gap: 12px; }
+.topic-card { background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; }
 .topic-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #f1f5f9;
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #f1f5f9;
 }
+.topic-info { display: flex; align-items: center; gap: 10px; }
+.action-buttons { display: flex; gap: 8px; }
 
-.topic-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 8px;
-}
-
-.topic-badge {
-  font-weight: 700;
-  font-size: 15px;
-  color: #0077b6;
-}
-
+.topic-badge { font-weight: 700; font-size: 15px; color: #0077b6; }
 .level-badge {
-  font-size: 11px;
-  background-color: #fe2e0e1a;
-  color: #c2410c;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-weight: 600;
+  font-size: 11px; background-color: #fe2e0e1a; color: #c2410c;
+  padding: 2px 8px; border-radius: 12px; font-weight: 600;
 }
 
 .btn-voice-small {
-  background-color: #e0f2fe;
-  color: #0284c7;
-  border: 1px solid #7dd3fc;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
+  background-color: #e0f2fe; color: #0284c7; border: 1px solid #7dd3fc;
+  padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;
 }
-
-.btn-voice-small:hover {
-  background-color: #0284c7;
-  color: #ffffff;
-}
+.btn-voice-small:hover { background-color: #0284c7; color: #ffffff; }
 
 .btn-delete-small {
-  background-color: #fee2e2;
-  color: #dc2626;
-  border: 1px solid #fca5a5;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
+  background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5;
+  padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;
 }
+.btn-delete-small:hover { background-color: #dc2626; color: #ffffff; }
 
-.btn-delete-small:hover {
-  background-color: #dc2626;
-  color: #ffffff;
-}
-
-.question-label {
-  margin: 0 0 4px 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: #64748b;
-}
-
-.question-ol {
-  margin: 0;
-  padding-left: 20px;
-  font-size: 13px;
-  color: #334155;
-}
-
-.question-item {
-  margin-bottom: 4px;
-}
+.question-label { margin: 0 0 4px 0; font-size: 12px; font-weight: 600; color: #64748b; }
+.question-ol { margin: 0; padding-left: 20px; font-size: 13px; color: #334155; }
+.question-item { margin-bottom: 4px; }
 
 .btn-speak-single {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  font-size: 13px;
-  margin-left: 6px;
-  padding: 2px 4px;
-  border-radius: 4px;
-  transition: background 0.2s;
+  background: transparent; border: none; cursor: pointer; font-size: 13px;
+  margin-left: 6px; padding: 2px 4px; border-radius: 4px;
 }
+.btn-speak-single:hover { background-color: #e2e8f0; }
 
-.btn-speak-single:hover {
-  background-color: #e2e8f0;
-}
+.leaderboard-title { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.leaderboard-title h3 { margin: 0; font-size: 16px; font-weight: 800; color: #003049; }
 
-.leaderboard-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.leaderboard-title h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 800;
-  color: #003049;
-}
-
-.table-responsive {
-  width: 100%;
-  overflow-x: auto;
-}
-
-.leaderboard-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
+.table-responsive { width: 100%; overflow-x: auto; }
+.leaderboard-table { width: 100%; border-collapse: collapse; }
 .leaderboard-table th {
-  background-color: #0077b6;
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 700;
-  padding: 12px 16px;
-  text-align: left;
+  background-color: #0077b6; color: #ffffff; font-size: 14px;
+  font-weight: 700; padding: 12px 16px; text-align: left;
 }
+.leaderboard-table td { padding: 12px 16px; font-size: 14px; border-bottom: 1px solid #f0f0f0; }
+.empty-table { text-align: center; color: #9ca3af; padding: 20px !important; }
 
-.leaderboard-table td {
-  padding: 12px 16px;
-  font-size: 14px;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.empty-table {
-  text-align: center;
-  color: #9ca3af;
-  padding: 20px !important;
-}
-
-.log-title {
-  margin: 0 0 16px 0;
-  font-size: 16px;
-  font-weight: 800;
-  color: #003049;
-}
-
-/* Penyesuaian Scroll Container Log */
+.log-title { margin: 0 0 16px 0; font-size: 16px; font-weight: 800; color: #003049; }
 .log-container {
-  background-color: #f8fafc;
-  border-radius: 8px;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-height: 350px;
-  overflow-y: auto;
+  background-color: #f8fafc; border-radius: 8px; padding: 16px;
+  display: flex; flex-direction: column; gap: 10px; max-height: 350px; overflow-y: auto;
 }
-
-.log-bubble {
-  background-color: #e0e7ff;
-  color: #1e3a8a;
-  padding: 12px 18px;
-  border-radius: 8px;
-  font-size: 14px;
-  line-height: 1.4;
-}
-
-.empty-log {
-  background-color: #f1f5f9;
-  color: #64748b;
-  font-style: italic;
-  text-align: center;
-}
+.log-bubble { background-color: #e0e7ff; color: #1e3a8a; padding: 12px 18px; border-radius: 8px; font-size: 14px; }
+.empty-log { background-color: #f1f5f9; color: #64748b; font-style: italic; text-align: center; }
 
 @media (max-width: 768px) {
-  .form-row {
-    flex-direction: column;
-    gap: 12px;
-  }
+  .form-row { flex-direction: column; gap: 12px; }
 }
 </style>

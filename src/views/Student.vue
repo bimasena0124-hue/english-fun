@@ -3,8 +3,9 @@
     <!-- Header Station -->
     <div class="card header-card">
       <div class="user-info">
-        <label>Student Name:</label>
+        <label for="student-name-input">Student Name:</label>
         <input 
+          id="student-name-input"
           v-model="studentName" 
           type="text" 
           placeholder="Enter your name..." 
@@ -23,7 +24,7 @@
       <div class="score-box">
         <div class="score-title">Average Pronunciation Score</div>
         <div class="score-value">{{ averagePronunciationScore }}%</div>
-        <div class="score-detail">Completed: {{ Object.keys(answersLog).length }} / {{ currentTopic.questions.length }} Questions</div>
+        <div class="score-detail">Completed: {{ Object.keys(answersLog).length }} / {{ currentTopic?.questions?.length || 0 }} Questions</div>
       </div>
 
       <button class="btn btn-primary mt-20" @click="restartPractice">
@@ -33,8 +34,39 @@
 
     <!-- Active Topic & Question Card -->
     <div class="card main-card" v-else-if="currentTopic">
-      <div class="topic-badge">📌 {{ currentTopic.title }} ({{ currentTopic.targetLevel }})</div>
-      
+      <!-- Active Topic Header dengan Dropdown Level & Topic -->
+      <div class="topic-header">
+        <!-- 1. Dropdown Pilih Target Level -->
+        <div class="select-group">
+          <label for="level-select">🎯 Level:</label>
+          <select 
+            id="level-select" 
+            v-model="selectedLevel" 
+            @change="onLevelChange"
+            class="dropdown-select"
+          >
+            <option v-for="lvl in availableLevels" :key="lvl.id || lvl" :value="lvl.name || lvl">
+              {{ lvl.name || lvl }}
+            </option>
+          </select>
+        </div>
+
+        <!-- 2. Dropdown Pilih Topik (Filtered by Level) -->
+        <div class="select-group" v-if="filteredTopics.length > 0">
+          <label for="topic-select">📌 Topic:</label>
+          <select 
+            id="topic-select" 
+            v-model="selectedTopicId" 
+            @change="onTopicChange"
+            class="dropdown-select"
+          >
+            <option v-for="topic in filteredTopics" :key="topic.id" :value="topic.id">
+              {{ topic.title }}
+            </option>
+          </select>
+        </div>
+      </div>
+
       <!-- Display Image if Available -->
       <div v-if="currentTopic.imageUrl" class="image-wrapper">
         <img :src="currentTopic.imageUrl" alt="Topic Image" class="topic-image" />
@@ -106,16 +138,29 @@
       </div>
     </div>
 
-    <!-- Empty State -->
+    <!-- Empty State jika belum ada topik pada level terpilih -->
     <div v-else class="card empty-card">
-      <p>⏳ Waiting for teacher to select or upload a topic...</p>
+      <div class="select-group-empty">
+        <label for="level-select-empty">🎯 Select Level:</label>
+        <select 
+          id="level-select-empty" 
+          v-model="selectedLevel" 
+          @change="onLevelChange"
+          class="dropdown-select"
+        >
+          <option v-for="lvl in availableLevels" :key="lvl.id || lvl" :value="lvl.name || lvl">
+            {{ lvl.name || lvl }}
+          </option>
+        </select>
+      </div>
+      <p class="empty-text">⏳ No topics available for level: <strong>{{ selectedLevel }}</strong></p>
     </div>
   </div>
 </template>
 
 <script>
 import { db } from '@/firebase'
-import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp } from 'firebase/firestore'
+import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore'
 
 export default {
   name: 'Student',
@@ -123,7 +168,10 @@ export default {
     return {
       studentName: '',
       topicsList: [],
+      availableLevels: [],
+      selectedLevel: '',
       currentTopic: null,
+      selectedTopicId: '',
       currentQuestionIndex: 0,
       spokenText: '',
       isListening: false,
@@ -136,6 +184,10 @@ export default {
     }
   },
   computed: {
+    // Memfilter topik berdasarkan targetLevel yang sedang dipilih siswa
+    filteredTopics() {
+      return this.topicsList.filter(t => t.targetLevel === this.selectedLevel)
+    },
     currentQuestion() {
       if (!this.currentTopic || !this.currentTopic.questions) return ''
       return this.currentTopic.questions[this.currentQuestionIndex] || ''
@@ -159,25 +211,67 @@ export default {
     }
   },
   mounted() {
+    this.fetchLevels()
     this.fetchTopics()
     this.initSpeechRecognition()
   },
   methods: {
+    // 1. Fetch Level dari Firestore secara Realtime
+    fetchLevels() {
+      const q = query(collection(db, 'levels'), orderBy('createdAt', 'asc'))
+      onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          this.availableLevels = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+          if (!this.selectedLevel && this.availableLevels.length > 0) {
+            this.selectedLevel = this.availableLevels[0].name
+          }
+        }
+      })
+    },
+
+    // 2. Fetch Topik dari Firestore secara Realtime
     fetchTopics() {
-      const q = query(collection(db, 'topics'), orderBy('createdAt', 'desc'), limit(1))
+      const q = query(collection(db, 'topics'), orderBy('createdAt', 'desc'))
       onSnapshot(q, (snapshot) => {
         if (!snapshot.empty) {
           this.topicsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-          this.currentTopic = this.topicsList[0]
-          this.resetState()
-          
-          this.$nextTick(() => {
-            if (this.currentQuestion) {
-              this.speakQuestion(this.currentQuestion)
-            }
-          })
+          this.updateTopicSelection()
         }
       })
+    },
+
+    onLevelChange() {
+      this.updateTopicSelection()
+    },
+
+    onTopicChange() {
+      const foundTopic = this.filteredTopics.find(t => t.id === this.selectedTopicId)
+      if (foundTopic) {
+        this.currentTopic = foundTopic
+        this.resetState()
+        this.$nextTick(() => {
+          if (this.currentQuestion) {
+            this.speakQuestion(this.currentQuestion)
+          }
+        })
+      }
+    },
+
+    updateTopicSelection() {
+      if (this.filteredTopics.length > 0) {
+        this.currentTopic = this.filteredTopics[0]
+        this.selectedTopicId = this.currentTopic.id
+        this.resetState()
+        
+        this.$nextTick(() => {
+          if (this.currentQuestion) {
+            this.speakQuestion(this.currentQuestion)
+          }
+        })
+      } else {
+        this.currentTopic = null
+        this.selectedTopicId = ''
+      }
     },
 
     speakQuestion(text) {
@@ -243,7 +337,6 @@ export default {
       }
     },
 
-    // 1. ALGORITMA PENILAIAN EJAAN (Levenshtein Distance)
     getLevenshteinDistance(a, b) {
       const matrix = Array.from({ length: a.length + 1 }, () => [])
       for (let i = 0; i <= a.length; i++) matrix[i][0] = i
@@ -262,9 +355,8 @@ export default {
       return matrix[a.length][b.length]
     },
 
-    // 2. MENGHITUNG SKOR PERSENTASE (0% - 100%)
     calculateSpellingScore(spoken, target) {
-      if (!target || !spoken) return 100 // Default 100 jika tidak ada kunci jawaban dari guru
+      if (!target || !spoken) return 100
 
       const cleanSpoken = spoken.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
       const cleanTarget = target.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
@@ -284,13 +376,12 @@ export default {
       const numericDuration = parseFloat(((Date.now() - this.startTime) / 1000).toFixed(1))
       const responseTimeFormatted = `${numericDuration}s`
       
-      // Hitung Skor Pengucapan / Ejaan
-      const score = this.calculateSpellingScore(this.spokenText, this.expectedAnswer)
-      const isCorrect = score >= 75 // Dianggap benar jika skor >= 75%
+      const targetForEval = this.expectedAnswer || this.currentQuestion
+      const score = this.calculateSpellingScore(this.spokenText, targetForEval)
+      const isCorrect = score >= 75
       
       this.evaluationResult = { score, isCorrect }
 
-      // Simpan di Memory Siswa
       this.answersLog[this.currentQuestionIndex] = {
         question: this.currentQuestion,
         spokenAnswer: this.spokenText,
@@ -299,17 +390,18 @@ export default {
         duration: numericDuration
       }
 
-      const logMessage = `[${this.studentName}] Q: "${this.currentQuestion}" -> Answer: "${this.spokenText}" (Score: ${score}%)`
+      const logMessage = `[${this.studentName}] Level: "${this.selectedLevel}" | Topic: "${this.currentTopic.title}" | Q: "${this.currentQuestion}" -> Answer: "${this.spokenText}" (${responseTimeFormatted})`
 
       try {
         await addDoc(collection(db, 'logs'), {
           message: logMessage,
           studentName: this.studentName,
+          targetLevel: this.selectedLevel,
           topic: this.currentTopic.title,
           question: this.currentQuestion,
           spokenAnswer: this.spokenText,
           expectedAnswer: this.expectedAnswer || '-',
-          spellingScore: score, // Skor persentase ejaan
+          spellingScore: score,
           isCorrect: isCorrect,
           responseTime: responseTimeFormatted,
           responseTimeNum: numericDuration,
@@ -408,9 +500,46 @@ export default {
   border-radius: 6px; border: none; outline: none; font-size: 14px;
 }
 
-.topic-badge {
-  display: inline-block; background-color: #e0f2fe; color: #0369a1;
-  padding: 6px 12px; border-radius: 20px; font-weight: 700; font-size: 14px; margin-bottom: 16px;
+.topic-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 12px;
+  background-color: #f0f9ff;
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+.select-group, .select-group-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.select-group label, .select-group-empty label {
+  font-weight: 700;
+  font-size: 14px;
+  color: #0369a1;
+  white-space: nowrap;
+}
+
+.dropdown-select {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 2px solid #e0f2fe;
+  background-color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dropdown-select:focus {
+  border-color: #0077b6;
 }
 
 .image-wrapper { text-align: center; margin-bottom: 16px; }
@@ -449,7 +578,6 @@ export default {
 .transcript-box label { font-size: 12px; font-weight: bold; color: #64748b; }
 .transcript-text { margin: 4px 0 0 0; font-size: 15px; color: #1e293b; font-style: italic; }
 
-/* Styles untuk Badge Skor Pronunciation */
 .eval-badge {
   margin-top: 10px; padding: 10px 14px; border-radius: 8px;
   display: flex; flex-direction: column; gap: 4px; font-size: 13px;
@@ -468,7 +596,6 @@ export default {
 .btn-success { background-color: #16a34a; color: white; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Completion Screen Styles */
 .completion-card { text-align: center; padding: 40px 24px; }
 .completion-icon { font-size: 50px; margin-bottom: 10px; }
 .completion-card h2 { margin: 0; color: #0f172a; }
@@ -482,7 +609,9 @@ export default {
 .score-value { font-size: 42px; font-weight: 800; color: #0077b6; margin: 4px 0; }
 .score-detail { font-size: 13px; font-weight: 600; color: #64748b; }
 
-.empty-card { text-align: center; color: #64748b; }
+.empty-card { text-align: center; color: #64748b; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.empty-text { font-size: 15px; margin: 0; }
+
 .mt-15 { margin-top: 15px; }
 .mt-20 { margin-top: 20px; }
 
