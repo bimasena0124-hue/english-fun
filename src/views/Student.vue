@@ -21,9 +21,9 @@
       <p class="completion-subtitle">You have completed all questions in this topic.</p>
       
       <div class="score-box">
-        <div class="score-title">Your Final Score</div>
-        <div class="score-value">{{ finalScore }}%</div>
-        <div class="score-detail">Correct: {{ correctCount }} / {{ currentTopic.questions.length }}</div>
+        <div class="score-title">Average Pronunciation Score</div>
+        <div class="score-value">{{ averagePronunciationScore }}%</div>
+        <div class="score-detail">Completed: {{ Object.keys(answersLog).length }} / {{ currentTopic.questions.length }} Questions</div>
       </div>
 
       <button class="btn btn-primary mt-20" @click="restartPractice">
@@ -62,15 +62,18 @@
         </button>
         <p v-if="!studentName.trim()" class="warning-text">⚠️ Please enter your name first to answer.</p>
 
-        <!-- Live Preview Transcribed Text & Evaluation -->
+        <!-- Live Preview Transcribed Text & Pronunciation Evaluation -->
         <div class="transcript-box mt-15">
           <label>Your Spoken Answer (Live Preview):</label>
           <p class="transcript-text">{{ spokenText || 'Your speech will appear here...' }}</p>
           
-          <!-- Indikator Hasil Pengecekan Speaking -->
-          <div v-if="evaluationResult !== null" :class="['eval-badge', evaluationResult ? 'correct' : 'incorrect']">
-            <span>{{ evaluationResult ? '✅ Great Pronunciation! (Correct)' : '❌ Needs Practice (Keep Trying)' }}</span>
-            <small v-if="expectedAnswer">Target: "{{ expectedAnswer }}"</small>
+          <!-- Indikator Skor Ejaan & Pengucapan -->
+          <div v-if="evaluationResult" :class="['eval-badge', getScoreClass(evaluationResult.score)]">
+            <div class="score-header">
+              <span>Pronunciation / Spelling Score: <strong>{{ evaluationResult.score }}%</strong></span>
+              <span class="status-tag">{{ getScoreStatus(evaluationResult.score) }}</span>
+            </div>
+            <small v-if="expectedAnswer">Target Text: "{{ expectedAnswer }}"</small>
           </div>
         </div>
 
@@ -127,9 +130,8 @@ export default {
       recognition: null,
       startTime: null,
       
-      // Data Tambahan untuk Evaluasi & Finish State
       evaluationResult: null,
-      answersLog: {}, // Menyimpan riwayat jawaban tiap soal
+      answersLog: {},
       isFinished: false
     }
   },
@@ -149,12 +151,11 @@ export default {
     hasAnsweredCurrent() {
       return !!this.answersLog[this.currentQuestionIndex]
     },
-    correctCount() {
-      return Object.values(this.answersLog).filter(log => log.isCorrect).length
-    },
-    finalScore() {
-      if (!this.currentTopic?.questions?.length) return 0
-      return Math.round((this.correctCount / this.currentTopic.questions.length) * 100)
+    averagePronunciationScore() {
+      const logs = Object.values(this.answersLog)
+      if (logs.length === 0) return 0
+      const total = logs.reduce((acc, item) => acc + item.score, 0)
+      return Math.round(total / logs.length)
     }
   },
   mounted() {
@@ -206,12 +207,19 @@ export default {
         }
 
         this.recognition.onerror = (event) => {
-          console.error('Speech recognition error:', event.error)
+          if (event.error === 'no-speech') {
+            console.warn('Tidak ada suara terdeteksi.')
+          } else {
+            console.error('Speech recognition error:', event.error)
+          }
           this.isListening = false
         }
 
         this.recognition.onend = () => {
-          this.isListening = false
+          if (this.isListening) {
+            this.isListening = false
+            this.evaluateAndSaveAnswer()
+          }
         }
       }
     },
@@ -235,14 +243,39 @@ export default {
       }
     },
 
-    // Algoritma Sederhana Pengecekan Speaking/Akurasi
-    checkAnswerAccuracy(spoken, expected) {
-      if (!expected) return true // Jika guru tidak isi kunci jawaban, anggap benar
-      
-      const cleanSpoken = spoken.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
-      const cleanExpected = expected.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
+    // 1. ALGORITMA PENILAIAN EJAAN (Levenshtein Distance)
+    getLevenshteinDistance(a, b) {
+      const matrix = Array.from({ length: a.length + 1 }, () => [])
+      for (let i = 0; i <= a.length; i++) matrix[i][0] = i
+      for (let j = 0; j <= b.length; j++) matrix[0][j] = j
 
-      return cleanSpoken.includes(cleanExpected) || cleanExpected.includes(cleanSpoken)
+      for (let i = 1; i <= a.length; i++) {
+        for (let j = 1; j <= b.length; j++) {
+          const cost = a[i - 1] === b[j - 1] ? 0 : 1
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j] + 1,      
+            matrix[i][j - 1] + 1,      
+            matrix[i - 1][j - 1] + cost 
+          )
+        }
+      }
+      return matrix[a.length][b.length]
+    },
+
+    // 2. MENGHITUNG SKOR PERSENTASE (0% - 100%)
+    calculateSpellingScore(spoken, target) {
+      if (!target || !spoken) return 100 // Default 100 jika tidak ada kunci jawaban dari guru
+
+      const cleanSpoken = spoken.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
+      const cleanTarget = target.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
+
+      if (cleanSpoken === cleanTarget) return 100
+
+      const distance = this.getLevenshteinDistance(cleanSpoken, cleanTarget)
+      const maxLength = Math.max(cleanSpoken.length, cleanTarget.length)
+
+      const similarityRatio = (1 - distance / maxLength) * 100
+      return Math.max(0, Math.round(similarityRatio))
     },
 
     async evaluateAndSaveAnswer() {
@@ -251,19 +284,22 @@ export default {
       const numericDuration = parseFloat(((Date.now() - this.startTime) / 1000).toFixed(1))
       const responseTimeFormatted = `${numericDuration}s`
       
-      // Jalankan Evaluasi Jawaban
-      const isCorrect = this.checkAnswerAccuracy(this.spokenText, this.expectedAnswer)
-      this.evaluationResult = isCorrect
+      // Hitung Skor Pengucapan / Ejaan
+      const score = this.calculateSpellingScore(this.spokenText, this.expectedAnswer)
+      const isCorrect = score >= 75 // Dianggap benar jika skor >= 75%
+      
+      this.evaluationResult = { score, isCorrect }
 
-      // Simpan di Local Memory Siswa
+      // Simpan di Memory Siswa
       this.answersLog[this.currentQuestionIndex] = {
         question: this.currentQuestion,
         spokenAnswer: this.spokenText,
+        score: score,
         isCorrect: isCorrect,
         duration: numericDuration
       }
 
-      const logMessage = `[${this.studentName}] Q: "${this.currentQuestion}" -> Answer: "${this.spokenText}" (${responseTimeFormatted}) [${isCorrect ? 'CORRECT' : 'INCORRECT'}]`
+      const logMessage = `[${this.studentName}] Q: "${this.currentQuestion}" -> Answer: "${this.spokenText}" (Score: ${score}%)`
 
       try {
         await addDoc(collection(db, 'logs'), {
@@ -273,6 +309,7 @@ export default {
           question: this.currentQuestion,
           spokenAnswer: this.spokenText,
           expectedAnswer: this.expectedAnswer || '-',
+          spellingScore: score, // Skor persentase ejaan
           isCorrect: isCorrect,
           responseTime: responseTimeFormatted,
           responseTimeNum: numericDuration,
@@ -281,6 +318,18 @@ export default {
       } catch (err) {
         console.error('Gagal mengirim log:', err)
       }
+    },
+
+    getScoreClass(score) {
+      if (score >= 85) return 'score-excellent'
+      if (score >= 70) return 'score-good'
+      return 'score-poor'
+    },
+
+    getScoreStatus(score) {
+      if (score >= 85) return '🌟 Excellent Pronunciation!'
+      if (score >= 70) return '👍 Good Pronunciation'
+      return '❌ Needs Practice'
     },
 
     nextQuestion() {
@@ -301,7 +350,7 @@ export default {
       const saved = this.answersLog[this.currentQuestionIndex]
       if (saved) {
         this.spokenText = saved.spokenAnswer
-        this.evaluationResult = saved.isCorrect
+        this.evaluationResult = { score: saved.score, isCorrect: saved.isCorrect }
       } else {
         this.spokenText = ''
         this.evaluationResult = null
@@ -400,12 +449,16 @@ export default {
 .transcript-box label { font-size: 12px; font-weight: bold; color: #64748b; }
 .transcript-text { margin: 4px 0 0 0; font-size: 15px; color: #1e293b; font-style: italic; }
 
+/* Styles untuk Badge Skor Pronunciation */
 .eval-badge {
-  margin-top: 10px; padding: 8px 12px; border-radius: 6px;
-  display: flex; flex-direction: column; gap: 4px; font-weight: bold; font-size: 13px;
+  margin-top: 10px; padding: 10px 14px; border-radius: 8px;
+  display: flex; flex-direction: column; gap: 4px; font-size: 13px;
 }
-.eval-badge.correct { background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; }
-.eval-badge.incorrect { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+.score-header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; }
+
+.score-excellent { background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+.score-good { background-color: #fef9c3; color: #a16207; border: 1px solid #fde047; }
+.score-poor { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
 
 .action-row { display: flex; justify-content: space-between; width: 100%; }
 
@@ -423,11 +476,11 @@ export default {
 
 .score-box {
   margin-top: 24px; background-color: #f8fafc; padding: 20px;
-  border-radius: 12px; border: 1px solid #e2e8f0; display: inline-block; min-width: 200px;
+  border-radius: 12px; border: 1px solid #e2e8f0; display: inline-block; min-width: 220px;
 }
 .score-title { font-size: 12px; font-weight: bold; color: #64748b; text-transform: uppercase; }
 .score-value { font-size: 42px; font-weight: 800; color: #0077b6; margin: 4px 0; }
-.score-detail { font-size: 14px; font-weight: 600; color: #334155; }
+.score-detail { font-size: 13px; font-weight: 600; color: #64748b; }
 
 .empty-card { text-align: center; color: #64748b; }
 .mt-15 { margin-top: 15px; }
