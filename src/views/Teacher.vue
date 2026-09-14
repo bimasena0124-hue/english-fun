@@ -250,7 +250,19 @@
 
 <script>
 import { db, auth } from '@/firebase'
-import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, where, serverTimestamp, setDoc } from 'firebase/firestore'
+import { 
+  collection, 
+  addDoc, 
+  deleteDoc, 
+  doc, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  where, 
+  serverTimestamp, 
+  setDoc, 
+  getDocs 
+} from 'firebase/firestore'
 import { signOut } from 'firebase/auth'
 
 export default {
@@ -311,7 +323,6 @@ export default {
       }
     },
 
-    // PERBAIKAN: Mengurai string berpemisah ';' menjadi Array saat menyimpan ke Firestore
     async saveTopic() {
       if (!this.formData.topicTitle || !this.formData.questions) {
         alert('Please complete the Topic Title and Questions fields.')
@@ -321,7 +332,6 @@ export default {
       try {
         this.isUploading = true
 
-        // Split berdasarkan ';' dan trim spasi
         const questionsArray = this.formData.questions
           .split(';')
           .map(q => q.trim())
@@ -340,7 +350,7 @@ export default {
           startDateTime: this.formData.startDateTime,
           dueDateTime: this.formData.dueDateTime,
           questions: questionsArray,
-          expectedAnswers: expectedAnswersArray, // Tersimpan sebagai Array
+          expectedAnswers: expectedAnswersArray,
           createdAt: serverTimestamp()
         })
 
@@ -352,7 +362,6 @@ export default {
 
         alert('Topic and Level successfully saved!')
 
-        // Reset input khusus topik
         this.formData.topicTitle = ''
         this.formData.questions = ''
         this.formData.expectedAnswers = ''
@@ -366,12 +375,28 @@ export default {
       }
     },
 
+    // PERBAIKAN: Menghapus dokumen 'topics' sekaligus cek & hapus 'levels' jika topik sudah habis
     async deleteTopic(id, title) {
+      const topicToDelete = this.topicsList.find(t => t.id === id)
+      if (!topicToDelete) return
+
+      const targetLevel = topicToDelete.targetLevel
+
       if (confirm(`Are you sure you want to delete topic "${title}"?`)) {
         try {
+          // 1. Hapus dokumen topik dari koleksi 'topics'
           await deleteDoc(doc(db, 'topics', id))
+
+          // 2. Cek apakah masih ada topik lain yang memakai targetLevel ini
+          const q = query(collection(db, 'topics'), where('targetLevel', '==', targetLevel))
+          const remainingTopics = await getDocs(q)
+
+          // 3. Jika tidak ada topik tersisa di kelas ini, hapus dari koleksi 'levels'
+          if (remainingTopics.empty) {
+            await deleteDoc(doc(db, 'levels', targetLevel))
+          }
         } catch (err) {
-          console.error('Failed to delete topic:', err)
+          console.error('Failed to delete topic & level:', err)
         }
       }
     },
