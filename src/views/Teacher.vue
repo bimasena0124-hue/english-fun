@@ -19,7 +19,7 @@
       <div v-show="isExpanded" class="card-body">
         <!-- Target Level Name -->
         <div class="form-group">
-          <label class="form-label">1. Target Level Name (Primary Key / Group):</label>
+          <label class="form-label">1. Class Name (Primary Key / Group):</label>
           <input
             v-model="formData.targetLevel"
             type="text"
