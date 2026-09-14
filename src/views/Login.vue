@@ -4,7 +4,7 @@
       <h2>{{ isRegisterMode ? 'Teacher Register' : 'Teacher Access' }}</h2>
 
       <form @submit.prevent="handleSubmit">
-        <!-- Input Username / Full Name -->
+        <!-- Input Username -->
         <div class="form-group">
           <label>Username</label>
           <input 
@@ -21,7 +21,18 @@
           <input 
             v-model="password" 
             type="password" 
-            placeholder="masukkan 6 karakter atau lebih" 
+            placeholder="Masukkan 6 karakter atau lebih" 
+            required 
+          />
+        </div>
+
+        <!-- Input Kode Verifikasi (Hanya Tampil Saat Mode Register) -->
+        <div class="form-group" v-if="isRegisterMode">
+          <label>Teacher Verification Code</label>
+          <input 
+            v-model="verificationCode" 
+            type="text" 
+            placeholder="Masukkan 6 digit kode guru" 
             required 
           />
         </div>
@@ -36,11 +47,11 @@
       <div class="toggle-mode">
         <span v-if="!isRegisterMode">
           Belum punya akun? 
-          <a @click.prevent="isRegisterMode = true" href="#">Daftar di sini</a>
+          <a @click.prevent="toggleMode(true)" href="#">Daftar di sini</a>
         </span>
         <span v-else>
           Sudah punya akun? 
-          <a @click.prevent="isRegisterMode = false" href="#">Login di sini</a>
+          <a @click.prevent="toggleMode(false)" href="#">Login di sini</a>
         </span>
       </div>
     </div>
@@ -50,7 +61,7 @@
 <script>
 import { auth, db } from '@/firebase'
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'
 
 export default {
   name: 'Login',
@@ -58,6 +69,7 @@ export default {
     return {
       fullName: '',
       password: '',
+      verificationCode: '',
       isRegisterMode: false,
       isLoading: false
     }
@@ -68,16 +80,20 @@ export default {
       return `${cleanName}@teacher.local`
     },
 
+    toggleMode(isRegister) {
+      this.isRegisterMode = isRegister
+      this.verificationCode = ''
+    },
+
     async handleSubmit() {
-      // 1. Cek apakah input kosong
+      // 1. Validasi Input Kosong & Spasi
       if (!this.fullName.trim()) {
         alert('Silakan masukkan username!')
         return
       }
 
-      // 2. VALIDASI SPASI: Jika terdapat spasi, batalkan proses dan tampilkan alert
       if (/\s/.test(this.fullName)) {
-        alert('Username tidak boleh menggunakan spasi! Silakan gunakan huruf/angka tanpa spasi.')
+        alert('Username tidak boleh menggunakan spasi!')
         return
       }
 
@@ -86,7 +102,25 @@ export default {
 
       try {
         if (this.isRegisterMode) {
-          // PROSES REGISTRASI
+          // 2. VALIDASI KODE VERIFIKASI DARI FIRESTORE
+          const codeDocRef = doc(db, 'app_config', 'teacher_passcode')
+          const codeDocSnap = await getDoc(codeDocRef)
+
+          if (!codeDocSnap.exists()) {
+            alert('Sistem belum dikonfigurasi. Kode verifikasi tidak ditemukan di Firestore!')
+            this.isLoading = false
+            return
+          }
+
+          const validCode = codeDocSnap.data().code
+
+          if (this.verificationCode.trim() !== String(validCode)) {
+            alert('Kode verifikasi guru salah! Akses registrasi ditolak.')
+            this.isLoading = false
+            return
+          }
+
+          // 3. PROSES REGISTRASI
           const userCredential = await createUserWithEmailAndPassword(auth, generatedEmail, this.password)
           const user = userCredential.user
 
