@@ -29,7 +29,7 @@ body {
   /* ==========================================
      BACKGROUND GAMBAR RESPONSIF
      ========================================== */
-  background-image: url('https://png.pngtree.com/thumb_back/fh260/background/20240522/pngtree-school-kids-background-vector-image_15806827.jpg'); /* Jalur gambar di folder assets */
+  background-image: url('https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=2000&q=80'); /* Jalur gambar di folder assets */
   background-size: cover;          /* Gambar memenuhi layar tanpa terdistorsi */
   background-position: center;     /* Mengunci fokus ke tengah gambar */
   background-repeat: no-repeat;    /* Mencegah gambar berulang */
