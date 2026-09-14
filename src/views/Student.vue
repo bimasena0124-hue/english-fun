@@ -19,7 +19,7 @@
     <div class="card completion-card" v-if="isFinished">
       <div class="completion-icon">🏆</div>
       <h2>Awesome Job, {{ studentName }}!</h2>
-      <p class="completion-subtitle">You have completed all questions in this topic.</p>
+      <p class="completion-subtitle">You have completed all reading questions in this topic.</p>
       
       <div class="score-box">
         <div class="score-title">Average Pronunciation Score</div>
@@ -72,13 +72,26 @@
         <img :src="currentTopic.imageUrl" alt="Topic Image" class="topic-image" />
       </div>
 
+      <!-- Kotak Jawaban/Teks Target dari Guru untuk Dibaca Siswa (Diletakkan di bawah gambar) -->
+      <div class="teacher-answer-box">
+        <div class="teacher-answer-header">
+          <span class="label-badge">📖 Read This Answer / Sentence:</span>
+          <button v-if="expectedAnswer" class="btn-replay" @click="speakQuestion(expectedAnswer)">
+            🔊 Listen Example
+          </button>
+        </div>
+        <p class="teacher-answer-text">
+          "{{ expectedAnswer || 'No specific reference answer set for this question.' }}"
+        </p>
+      </div>
+
       <!-- Current Question Box -->
       <div class="question-box">
         <h3>Question {{ currentQuestionIndex + 1 }} of {{ currentTopic.questions.length }}:</h3>
         <p class="question-text">"{{ currentQuestion }}"</p>
         
         <button class="btn-replay" @click="speakQuestion(currentQuestion)">
-          🔊 Listen Again
+          🔊 Listen Question
         </button>
       </div>
 
@@ -90,22 +103,21 @@
           :disabled="!studentName.trim()"
         >
           <span class="mic-icon">{{ isListening ? '⏹️' : '🎙️' }}</span>
-          {{ isListening ? 'Listening... (Click to Stop)' : 'Click to Answer (Speak)' }}
+          {{ isListening ? 'Listening... (Click to Stop)' : 'Click to Read Aloud' }}
         </button>
-        <p v-if="!studentName.trim()" class="warning-text">⚠️ Please enter your name first to answer.</p>
+        <p v-if="!studentName.trim()" class="warning-text">⚠️ Please enter your name first to start reading.</p>
 
         <!-- Live Preview Transcribed Text & Pronunciation Evaluation -->
         <div class="transcript-box mt-15">
-          <label>Your Spoken Answer (Live Preview):</label>
-          <p class="transcript-text">{{ spokenText || 'Your speech will appear here...' }}</p>
+          <label>Your Reading Result (Live Preview):</label>
+          <p class="transcript-text">{{ spokenText || 'Your spoken voice will appear here...' }}</p>
           
           <!-- Indikator Skor Ejaan & Pengucapan -->
           <div v-if="evaluationResult" :class="['eval-badge', getScoreClass(evaluationResult.score)]">
             <div class="score-header">
-              <span>Pronunciation / Spelling Score: <strong>{{ evaluationResult.score }}%</strong></span>
+              <span>Pronunciation / Reading Accuracy: <strong>{{ evaluationResult.score }}%</strong></span>
               <span class="status-tag">{{ getScoreStatus(evaluationResult.score) }}</span>
             </div>
-            <small v-if="expectedAnswer">Target Text: "{{ expectedAnswer }}"</small>
           </div>
         </div>
 
@@ -184,7 +196,6 @@ export default {
     }
   },
   computed: {
-    // Memfilter topik berdasarkan targetLevel yang sedang dipilih siswa
     filteredTopics() {
       return this.topicsList.filter(t => t.targetLevel === this.selectedLevel)
     },
@@ -192,6 +203,7 @@ export default {
       if (!this.currentTopic || !this.currentTopic.questions) return ''
       return this.currentTopic.questions[this.currentQuestionIndex] || ''
     },
+    // Mengambil jawaban buatan guru dari array answerKeys di database
     expectedAnswer() {
       if (!this.currentTopic || !this.currentTopic.answerKeys) return ''
       return this.currentTopic.answerKeys[this.currentQuestionIndex] || ''
@@ -216,7 +228,6 @@ export default {
     this.initSpeechRecognition()
   },
   methods: {
-    // 1. Fetch Level dari Firestore secara Realtime
     fetchLevels() {
       const q = query(collection(db, 'levels'), orderBy('createdAt', 'asc'))
       onSnapshot(q, (snapshot) => {
@@ -229,7 +240,6 @@ export default {
       })
     },
 
-    // 2. Fetch Topik dari Firestore secara Realtime
     fetchTopics() {
       const q = query(collection(db, 'topics'), orderBy('createdAt', 'desc'))
       onSnapshot(q, (snapshot) => {
@@ -250,7 +260,9 @@ export default {
         this.currentTopic = foundTopic
         this.resetState()
         this.$nextTick(() => {
-          if (this.currentQuestion) {
+          if (this.expectedAnswer) {
+            this.speakQuestion(this.expectedAnswer)
+          } else if (this.currentQuestion) {
             this.speakQuestion(this.currentQuestion)
           }
         })
@@ -264,7 +276,9 @@ export default {
         this.resetState()
         
         this.$nextTick(() => {
-          if (this.currentQuestion) {
+          if (this.expectedAnswer) {
+            this.speakQuestion(this.expectedAnswer)
+          } else if (this.currentQuestion) {
             this.speakQuestion(this.currentQuestion)
           }
         })
@@ -320,7 +334,7 @@ export default {
 
     toggleListening() {
       if (!this.recognition) {
-        alert('Browser kamu belum mendukung Speech Recognition gunakan browser lain')
+        alert('Browser kamu belum mendukung Speech Recognition. Gunakan Google Chrome.')
         return
       }
 
@@ -356,7 +370,7 @@ export default {
     },
 
     calculateSpellingScore(spoken, target) {
-      if (!target || !spoken) return 100
+      if (!target || !spoken) return 0
 
       const cleanSpoken = spoken.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
       const cleanTarget = target.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
@@ -376,6 +390,7 @@ export default {
       const numericDuration = parseFloat(((Date.now() - this.startTime) / 1000).toFixed(1))
       const responseTimeFormatted = `${numericDuration}s`
       
+      // Mengukur akurasi pengucapan siswa terhadap jawaban dari guru
       const targetForEval = this.expectedAnswer || this.currentQuestion
       const score = this.calculateSpellingScore(this.spokenText, targetForEval)
       const isCorrect = score >= 75
@@ -390,7 +405,7 @@ export default {
         duration: numericDuration
       }
 
-      const logMessage = `[${this.studentName}] Level: "${this.selectedLevel}" | Topic: "${this.currentTopic.title}" | Q: "${this.currentQuestion}" -> Answer: "${this.spokenText}" (${responseTimeFormatted})`
+      const logMessage = `[${this.studentName}] Level: "${this.selectedLevel}" | Topic: "${this.currentTopic.title}" | Read Text: "${targetForEval}" -> Spoken: "${this.spokenText}" (${responseTimeFormatted})`
 
       try {
         await addDoc(collection(db, 'logs'), {
@@ -447,7 +462,11 @@ export default {
         this.spokenText = ''
         this.evaluationResult = null
       }
-      this.speakQuestion(this.currentQuestion)
+      if (this.expectedAnswer) {
+        this.speakQuestion(this.expectedAnswer)
+      } else {
+        this.speakQuestion(this.currentQuestion)
+      }
     },
 
     finishSession() {
@@ -456,7 +475,9 @@ export default {
 
     restartPractice() {
       this.resetState()
-      if (this.currentQuestion) {
+      if (this.expectedAnswer) {
+        this.speakQuestion(this.expectedAnswer)
+      } else if (this.currentQuestion) {
         this.speakQuestion(this.currentQuestion)
       }
     },
@@ -545,12 +566,44 @@ export default {
 .image-wrapper { text-align: center; margin-bottom: 16px; }
 .topic-image { max-width: 100%; max-height: 250px; border-radius: 8px; object-fit: cover; }
 
+/* Styling Kotak Jawaban Guru */
+.teacher-answer-box {
+  background-color: #f0fdf4;
+  border: 2px dashed #22c55e;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+.teacher-answer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.label-badge {
+  font-size: 13px;
+  font-weight: 700;
+  color: #15803d;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.teacher-answer-text {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #14532d;
+  line-height: 1.5;
+}
+
 .question-box {
-  background-color: #f8fafc; border-left: 5px solid #0077b6;
-  padding: 16px; border-radius: 6px; margin-bottom: 20px;
+  background-color: #f8fafc; 
+  border-left: 5px solid #0077b6;
+  padding: 16px; 
+  border-radius: 6px; 
+  margin-bottom: 20px;
 }
 .question-box h3 { margin: 0 0 8px 0; color: #64748b; font-size: 14px; }
-.question-text { margin: 0 0 12px 0; font-size: 18px; font-weight: 700; color: #0f172a; }
+.question-text { margin: 0 0 12px 0; font-size: 16px; font-weight: 600; color: #334155; }
 
 .btn-replay {
   background-color: #e2e8f0; border: none; padding: 6px 12px;
