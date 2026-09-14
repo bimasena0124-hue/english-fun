@@ -141,7 +141,7 @@
     <!-- Empty State jika belum ada topik pada level terpilih -->
     <div v-else class="card empty-card">
       <div class="select-group-empty">
-        <label for="level-select-empty">🎯 Select Level:</label>
+        <label for="level-select-empty">🎯 Select Class:</label>
         <select 
           id="level-select-empty" 
           v-model="selectedLevel" 
