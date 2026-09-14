@@ -153,11 +153,25 @@
       </div>
     </div>
 
-    <!-- 2. SECTION: TOP TEN FASTEST -->
+    <!-- FILTER BAR UNTUK MONITORING KELAS -->
+    <div class="filter-card">
+      <div class="filter-group">
+        <label class="filter-label">🎯 Filter by Class Name:</label>
+        <select v-model="selectedClassFilter" @change="setupRealtimeListeners" class="form-select filter-select">
+          <option value="">-- All Classes --</option>
+          <option v-for="lvl in availableLevels" :key="lvl" :value="lvl">
+            {{ lvl }}
+          </option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 2. SECTION: STUDENT RANKINGS BY SPEED -->
     <div class="card card-section">
       <div class="leaderboard-title">
         <span class="trophy-icon">🏆</span>
-        <h3>TOP TEN FASTEST</h3>
+        <h3>STUDENT RANKINGS (ALL RESPONSES)</h3>
+        <span class="class-tag" v-if="selectedClassFilter">Class: {{ selectedClassFilter }}</span>
       </div>
       
       <div class="table-responsive">
@@ -166,6 +180,7 @@
             <tr>
               <th>Rank</th>
               <th>Student Name</th>
+              <th>Class / Level</th>
               <th>Topic</th>
               <th>Response Time</th>
               <th>Spoken Answer</th>
@@ -173,16 +188,17 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(item, index) in topTenList" :key="index">
+            <tr v-for="(item, index) in studentRankings" :key="index">
               <td>{{ item.rank }}</td>
               <td>{{ item.studentName }}</td>
+              <td><span class="level-badge">{{ item.targetLevel }}</span></td>
               <td>{{ item.topic }}</td>
               <td>{{ item.responseTime }}</td>
               <td>{{ item.spokenAnswer }}</td>
               <td>{{ item.fluency }}</td>
             </tr>
-            <tr v-if="topTenList.length === 0">
-              <td colspan="6" class="empty-table">No rankings available yet.</td>
+            <tr v-if="studentRankings.length === 0">
+              <td colspan="7" class="empty-table">No data available for this class.</td>
             </tr>
           </tbody>
         </table>
@@ -191,13 +207,16 @@
 
     <!-- 3. SECTION: INTERACTION LOG -->
     <div class="card card-section">
-      <h3 class="log-title">Interaction Log:</h3>
+      <div class="log-header">
+        <h3 class="log-title">Interaction Log:</h3>
+        <span class="class-tag" v-if="selectedClassFilter">Class: {{ selectedClassFilter }}</span>
+      </div>
       <div class="log-container">
         <div v-for="(log, idx) in logs" :key="idx" class="log-bubble">
           {{ log }}
         </div>
         <div v-if="logs.length === 0" class="log-bubble empty-log">
-          Belum ada aktivitas interaksi dari siswa.
+          Belum ada aktivitas interaksi dari siswa di kelas ini.
         </div>
       </div>
     </div>
@@ -207,7 +226,7 @@
 
 <script>
 import { db, auth } from '@/firebase'
-import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, setDoc } from 'firebase/firestore'
+import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, where, serverTimestamp, setDoc } from 'firebase/firestore'
 import { signOut } from 'firebase/auth'
 
 export default {
@@ -217,6 +236,8 @@ export default {
       isExpanded: true,
       selectedFileName: '',
       isUploading: false,
+      selectedClassFilter: '',
+      availableLevels: [],
       formData: {
         targetLevel: 'Grade 1 Elementary',
         startDateTime: '',
@@ -227,12 +248,14 @@ export default {
         selectedFile: null
       },
       topicsList: [],
-      topTenList: [],
-      logs: []
+      studentRankings: [],
+      logs: [],
+      unsubscribeLogs: null,
+      unsubscribeRankings: null
     }
   },
   mounted() {
-    // 1. Fetch Topics Realtime
+    // 1. Fetch Topics & Extract Available Levels for Filter
     const qTopics = query(collection(db, 'topics'), orderBy('createdAt', 'desc'))
     onSnapshot(qTopics, (snapshot) => {
       this.topicsList = snapshot.docs.map(doc => ({
@@ -241,40 +264,84 @@ export default {
       }))
     })
 
-    // 2. Fetch Interaction Logs Realtime
-    const qLogs = query(collection(db, 'logs'), orderBy('createdAt', 'desc'))
-    onSnapshot(qLogs, (snapshot) => {
-      if (!snapshot.empty) {
-        this.logs = snapshot.docs.map(doc => {
-          const data = doc.data()
-          return data.message || `[${data.studentName || 'Unknown'}] Q: "${data.question || '-'}" -> Answer: "${data.spokenAnswer || '-'}" (${data.responseTime || '0s'})`
-        })
-      } else {
-        this.logs = []
-      }
+    // Fetch daftar level/kelas dari Firestore
+    const qLevels = query(collection(db, 'levels'), orderBy('name', 'asc'))
+    onSnapshot(qLevels, (snapshot) => {
+      this.availableLevels = snapshot.docs.map(doc => doc.data().name || doc.id)
     })
 
-    // 3. Fetch Top Ten Fastest Realtime
-    const qTopTen = query(collection(db, 'logs'), orderBy('responseTimeNum', 'asc'))
-    onSnapshot(qTopTen, (snapshot) => {
-      if (!snapshot.empty) {
-        this.topTenList = snapshot.docs.slice(0, 10).map((doc, index) => {
-          const data = doc.data()
-          return {
-            rank: index + 1,
-            studentName: data.studentName || '-',
-            topic: data.topic || '-',
-            responseTime: data.responseTime || '-',
-            spokenAnswer: data.spokenAnswer || '-',
-            fluency: `Score: ${data.spellingScore || 0}%`
-          }
-        })
-      } else {
-        this.topTenList = []
-      }
-    })
+    // 2. Setup Realtime Listeners untuk Logs & Rankings
+    this.setupRealtimeListeners()
+  },
+  beforeUnmount() {
+    // Clean listener saat komponen dilepas
+    if (this.unsubscribeLogs) this.unsubscribeLogs()
+    if (this.unsubscribeRankings) this.unsubscribeRankings()
   },
   methods: {
+    setupRealtimeListeners() {
+      // Unsubscribe listener terdahulu jika ada
+      if (this.unsubscribeLogs) this.unsubscribeLogs()
+      if (this.unsubscribeRankings) this.unsubscribeRankings()
+
+      // --- 1. Listener Interaction Logs ---
+      let logsRef = collection(db, 'logs')
+      let qLogs
+
+      if (this.selectedClassFilter) {
+        qLogs = query(
+          logsRef,
+          where('targetLevel', '==', this.selectedClassFilter),
+          orderBy('createdAt', 'desc')
+        )
+      } else {
+        qLogs = query(logsRef, orderBy('createdAt', 'desc'))
+      }
+
+      this.unsubscribeLogs = onSnapshot(qLogs, (snapshot) => {
+        if (!snapshot.empty) {
+          this.logs = snapshot.docs.map(doc => {
+            const data = doc.data()
+            return data.message || `[${data.targetLevel || 'No Class'}] [${data.studentName || 'Unknown'}] Q: "${data.question || '-'}" -> Answer: "${data.spokenAnswer || '-'}" (${data.responseTime || '0s'})`
+          })
+        } else {
+          this.logs = []
+        }
+      })
+
+      // --- 2. Listener Rankings (Semua Siswa Diurutkan Berdasarkan Waktu Respon) ---
+      let qRankings
+
+      if (this.selectedClassFilter) {
+        qRankings = query(
+          logsRef,
+          where('targetLevel', '==', this.selectedClassFilter),
+          orderBy('responseTimeNum', 'asc')
+        )
+      } else {
+        qRankings = query(logsRef, orderBy('responseTimeNum', 'asc'))
+      }
+
+      this.unsubscribeRankings = onSnapshot(qRankings, (snapshot) => {
+        if (!snapshot.empty) {
+          this.studentRankings = snapshot.docs.map((doc, index) => {
+            const data = doc.data()
+            return {
+              rank: index + 1,
+              studentName: data.studentName || '-',
+              targetLevel: data.targetLevel || '-',
+              topic: data.topic || '-',
+              responseTime: data.responseTime || '-',
+              spokenAnswer: data.spokenAnswer || '-',
+              fluency: `Score: ${data.spellingScore || 0}%`
+            }
+          })
+        } else {
+          this.studentRankings = []
+        }
+      })
+    },
+
     async logout() {
       try {
         await signOut(auth)
@@ -325,13 +392,13 @@ export default {
 
         const levelName = this.formData.targetLevel.trim()
 
-        // 1. Simpan/Update Level di Firestore (Supaya otomatis muncul di dropdown Student)
+        // 1. Simpan/Update Level di Firestore
         await setDoc(doc(db, 'levels', levelName), {
           name: levelName,
           createdAt: serverTimestamp()
         }, { merge: true })
 
-        // 2. Simpan Topik dengan Target Level sebagai Key Relasi
+        // 2. Simpan Topik dengan Target Level
         await addDoc(collection(db, 'topics'), {
           title: this.formData.topicTitle,
           questions: questionsArray,
@@ -457,6 +524,14 @@ export default {
 }
 .form-select { background-color: #f3f4f6; }
 
+.filter-card {
+  background-color: #ffffff; padding: 14px 20px; border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04); border-left: 4px solid #0077b6;
+}
+.filter-group { display: flex; align-items: center; gap: 12px; }
+.filter-label { font-weight: 700; color: #0077b6; font-size: 14px; white-space: nowrap; }
+.filter-select { max-width: 300px; background-color: #ffffff; border-color: #0077b6; }
+
 .file-input-wrapper { width: 100%; }
 .file-input-hidden { display: none; }
 .file-input-label {
@@ -526,6 +601,7 @@ export default {
 
 .leaderboard-title { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .leaderboard-title h3 { margin: 0; font-size: 16px; font-weight: 800; color: #003049; }
+.class-tag { background-color: #e0f2fe; color: #0369a1; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; }
 
 .table-responsive { width: 100%; overflow-x: auto; }
 .leaderboard-table { width: 100%; border-collapse: collapse; }
@@ -536,7 +612,8 @@ export default {
 .leaderboard-table td { padding: 12px 16px; font-size: 14px; border-bottom: 1px solid #f0f0f0; }
 .empty-table { text-align: center; color: #9ca3af; padding: 20px !important; }
 
-.log-title { margin: 0 0 16px 0; font-size: 16px; font-weight: 800; color: #003049; }
+.log-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.log-title { margin: 0; font-size: 16px; font-weight: 800; color: #003049; }
 .log-container {
   background-color: #f8fafc; border-radius: 8px; padding: 16px;
   display: flex; flex-direction: column; gap: 10px; max-height: 350px; overflow-y: auto;
@@ -546,5 +623,7 @@ export default {
 
 @media (max-width: 768px) {
   .form-row { flex-direction: column; gap: 12px; }
+  .filter-group { flex-direction: column; align-items: flex-start; }
+  .filter-select { max-width: 100%; }
 }
 </style>
