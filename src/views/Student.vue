@@ -38,7 +38,7 @@
       <div class="topic-header">
         <!-- 1. Dropdown Pilih Target Level -->
         <div class="select-group">
-          <label for="level-select">🎯 Level:</label>
+          <label for="level-select">🎯 Class:</label>
           <select 
             id="level-select" 
             v-model="selectedLevel" 
@@ -320,7 +320,7 @@ export default {
 
     toggleListening() {
       if (!this.recognition) {
-        alert('Browser kamu belum mendukung Speech Recognition. Gunakan Chrome atau Edge.')
+        alert('Browser kamu belum mendukung Speech Recognition gunakan browser lain')
         return
       }
 
