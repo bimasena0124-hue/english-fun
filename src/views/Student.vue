@@ -15,7 +15,7 @@
       </div>
     </div>
 
-    <!-- Completion Screen (Tanda Pengerjaan Selesai) -->
+    <!-- Completion Screen -->
     <div class="card completion-card" v-if="isFinished">
       <div class="completion-icon">🏆</div>
       <h2>Awesome Job, {{ studentName }}!</h2>
@@ -34,7 +34,6 @@
 
     <!-- Active Topic & Question Card -->
     <div class="card main-card" v-else-if="currentTopic">
-      <!-- Active Topic Header dengan Dropdown Level & Topic -->
       <div class="topic-header">
         <!-- 1. Dropdown Pilih Target Level -->
         <div class="select-group">
@@ -51,7 +50,7 @@
           </select>
         </div>
 
-        <!-- 2. Dropdown Pilih Topik (Filtered by Level) -->
+        <!-- 2. Dropdown Pilih Topik -->
         <div class="select-group" v-if="filteredTopics.length > 0">
           <label for="topic-select">📌 Topic:</label>
           <select 
@@ -72,7 +71,7 @@
         <img :src="currentTopic.imageUrl" alt="Topic Image" class="topic-image" />
       </div>
 
-      <!-- Kotak Jawaban/Teks Target dari Guru untuk Dibaca Siswa (Diletakkan di bawah gambar) -->
+      <!-- Kotak Jawaban Target dari Guru -->
       <div class="teacher-answer-box">
         <div class="teacher-answer-header">
           <span class="label-badge">📖 Read This Answer / Sentence:</span>
@@ -107,12 +106,11 @@
         </button>
         <p v-if="!studentName.trim()" class="warning-text">⚠️ Please enter your name first to start reading.</p>
 
-        <!-- Live Preview Transcribed Text & Pronunciation Evaluation -->
+        <!-- Live Preview Transcribed Text & Evaluation -->
         <div class="transcript-box mt-15">
           <label>Your Reading Result (Live Preview):</label>
           <p class="transcript-text">{{ spokenText || 'Your spoken voice will appear here...' }}</p>
           
-          <!-- Indikator Skor Ejaan & Pengucapan -->
           <div v-if="evaluationResult" :class="['eval-badge', getScoreClass(evaluationResult.score)]">
             <div class="score-header">
               <span>Pronunciation / Reading Accuracy: <strong>{{ evaluationResult.score }}%</strong></span>
@@ -150,7 +148,7 @@
       </div>
     </div>
 
-    <!-- Empty State jika belum ada topik pada level terpilih -->
+    <!-- Empty State -->
     <div v-else class="card empty-card">
       <div class="select-group-empty">
         <label for="level-select-empty">🎯 Select Class:</label>
@@ -189,7 +187,6 @@ export default {
       isListening: false,
       recognition: null,
       startTime: null,
-      
       evaluationResult: null,
       answersLog: {},
       isFinished: false
@@ -203,10 +200,12 @@ export default {
       if (!this.currentTopic || !this.currentTopic.questions) return ''
       return this.currentTopic.questions[this.currentQuestionIndex] || ''
     },
-    // Mengambil jawaban buatan guru dari array answerKeys di database
+    // PERBAIKAN: Mengambil data dari expectedAnswers (atau fallback ke answerKeys)
     expectedAnswer() {
-      if (!this.currentTopic || !this.currentTopic.answerKeys) return ''
-      return this.currentTopic.answerKeys[this.currentQuestionIndex] || ''
+      if (!this.currentTopic) return ''
+      const answers = this.currentTopic.expectedAnswers || this.currentTopic.answerKeys
+      if (!answers || !Array.isArray(answers)) return ''
+      return answers[this.currentQuestionIndex] || ''
     },
     isLastQuestion() {
       if (!this.currentTopic || !this.currentTopic.questions) return false
@@ -390,7 +389,6 @@ export default {
       const numericDuration = parseFloat(((Date.now() - this.startTime) / 1000).toFixed(1))
       const responseTimeFormatted = `${numericDuration}s`
       
-      // Mengukur akurasi pengucapan siswa terhadap jawaban dari guru
       const targetForEval = this.expectedAnswer || this.currentQuestion
       const score = this.calculateSpellingScore(this.spokenText, targetForEval)
       const isCorrect = score >= 75
@@ -566,7 +564,6 @@ export default {
 .image-wrapper { text-align: center; margin-bottom: 16px; }
 .topic-image { max-width: 100%; max-height: 250px; border-radius: 8px; object-fit: cover; }
 
-/* Styling Kotak Jawaban Guru */
 .teacher-answer-box {
   background-color: #f0fdf4;
   border: 2px dashed #22c55e;

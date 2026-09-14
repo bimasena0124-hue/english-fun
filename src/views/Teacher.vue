@@ -186,7 +186,7 @@
       </div>
     </div>
 
-    <!-- 2. SECTION: STUDENT RANKINGS BY SPEED -->
+    <!-- 2. SECTION: STUDENT RANKINGS -->
     <div class="card card-section">
       <div class="leaderboard-title">
         <span class="trophy-icon">🏆</span>
@@ -209,13 +209,17 @@
           </thead>
           <tbody>
             <tr v-for="(item, index) in studentRankings" :key="index">
-              <td>{{ item.rank }}</td>
+              <td>{{ index + 1 }}</td>
               <td>{{ item.studentName }}</td>
               <td><span class="level-badge">{{ item.targetLevel }}</span></td>
               <td>{{ item.topic }}</td>
               <td>{{ item.responseTime }}</td>
               <td>{{ item.spokenAnswer }}</td>
-              <td>{{ item.fluency }}</td>
+              <td>
+                <span :class="['score-badge', getScoreClass(item.spellingScore)]">
+                  {{ item.spellingScore }}% Accuracy
+                </span>
+              </td>
             </tr>
             <tr v-if="studentRankings.length === 0">
               <td colspan="7" class="empty-table">No data available for this class.</td>
@@ -233,7 +237,7 @@
       </div>
       <div class="log-container">
         <div v-for="(log, idx) in logs" :key="idx" class="log-bubble">
-          {{ log }}
+          {{ log.message || log }}
         </div>
         <div v-if="logs.length === 0" class="log-bubble empty-log">
           Belum ada aktivitas interaksi dari siswa di kelas ini.
@@ -265,7 +269,7 @@ export default {
         aiVoice: 'en-US',
         topicTitle: '',
         questions: '',
-        expectedAnswers: '', // State untuk menyimpan input jawaban dari guru
+        expectedAnswers: '',
         selectedFile: null
       },
       topicsList: [],
@@ -276,7 +280,7 @@ export default {
     }
   },
   mounted() {
-    // 1. Fetch Topics & Extract Available Levels for Filter
+    // 1. Fetch Topics
     const qTopics = query(collection(db, 'topics'), orderBy('createdAt', 'desc'))
     onSnapshot(qTopics, (snapshot) => {
       this.topicsList = snapshot.docs.map(doc => ({
@@ -285,80 +289,144 @@ export default {
       }))
     })
 
-    // Fetch daftar level/kelas dari Firestore
-    const qLevels = query(collection(db, 'levels'), orderBy('name', 'asc'))
+    // 2. Fetch Levels
+    const qLevels = query(collection(db, 'levels'), orderBy('createdAt', 'asc'))
     onSnapshot(qLevels, (snapshot) => {
       this.availableLevels = snapshot.docs.map(doc => doc.data().name || doc.id)
     })
 
-    // 2. Setup Realtime Listeners untuk Logs & Rankings
+    // 3. Setup realtime log & ranking listener
     this.setupRealtimeListeners()
   },
-  beforeUnmount() {
+  unmounted() {
     if (this.unsubscribeLogs) this.unsubscribeLogs()
     if (this.unsubscribeRankings) this.unsubscribeRankings()
   },
   methods: {
+    handleFileUpload(event) {
+      const file = event.target.files[0]
+      if (file) {
+        this.formData.selectedFile = file
+        this.selectedFileName = file.name
+      }
+    },
+
+    // PERBAIKAN: Mengurai string berpemisah ';' menjadi Array saat menyimpan ke Firestore
+    async saveTopic() {
+      if (!this.formData.topicTitle || !this.formData.questions) {
+        alert('Please complete the Topic Title and Questions fields.')
+        return
+      }
+
+      try {
+        this.isUploading = true
+
+        // Split berdasarkan ';' dan trim spasi
+        const questionsArray = this.formData.questions
+          .split(';')
+          .map(q => q.trim())
+          .filter(q => q !== '')
+
+        const expectedAnswersArray = this.formData.expectedAnswers
+          .split(';')
+          .map(a => a.trim())
+          .filter(a => a !== '')
+
+        // 1. Simpan Topik ke Firestore
+        await addDoc(collection(db, 'topics'), {
+          targetLevel: this.formData.targetLevel,
+          title: this.formData.topicTitle,
+          aiVoice: this.formData.aiVoice,
+          startDateTime: this.formData.startDateTime,
+          dueDateTime: this.formData.dueDateTime,
+          questions: questionsArray,
+          expectedAnswers: expectedAnswersArray, // Tersimpan sebagai Array
+          createdAt: serverTimestamp()
+        })
+
+        // 2. Simpan/Update Kelas ke Koleksi 'levels'
+        await setDoc(doc(db, 'levels', this.formData.targetLevel), {
+          name: this.formData.targetLevel,
+          createdAt: serverTimestamp()
+        }, { merge: true })
+
+        alert('Topic and Level successfully saved!')
+
+        // Reset input khusus topik
+        this.formData.topicTitle = ''
+        this.formData.questions = ''
+        this.formData.expectedAnswers = ''
+        this.formData.selectedFile = null
+        this.selectedFileName = ''
+      } catch (error) {
+        console.error('Error saving topic:', error)
+        alert('Failed to save topic: ' + error.message)
+      } finally {
+        this.isUploading = false
+      }
+    },
+
+    async deleteTopic(id, title) {
+      if (confirm(`Are you sure you want to delete topic "${title}"?`)) {
+        try {
+          await deleteDoc(doc(db, 'topics', id))
+        } catch (err) {
+          console.error('Failed to delete topic:', err)
+        }
+      }
+    },
+
+    speakText(text) {
+      if ('speechSynthesis' in window && text) {
+        window.speechSynthesis.cancel()
+        const utterance = new SpeechSynthesisUtterance(text)
+        utterance.lang = this.formData.aiVoice || 'en-US'
+        window.speechSynthesis.speak(utterance)
+      }
+    },
+
+    speakAllQuestions(questions) {
+      if (!questions || !questions.length) return
+      const text = questions.join('. ')
+      this.speakText(text)
+    },
+
     setupRealtimeListeners() {
       if (this.unsubscribeLogs) this.unsubscribeLogs()
       if (this.unsubscribeRankings) this.unsubscribeRankings()
 
-      // --- 1. Listener Interaction Logs ---
-      let logsRef = collection(db, 'logs')
-      let qLogs
+      let logsQuery
+      let rankingsQuery
 
       if (this.selectedClassFilter) {
-        qLogs = query(
-          logsRef,
+        logsQuery = query(
+          collection(db, 'logs'),
           where('targetLevel', '==', this.selectedClassFilter),
           orderBy('createdAt', 'desc')
         )
-      } else {
-        qLogs = query(logsRef, orderBy('createdAt', 'desc'))
-      }
-
-      this.unsubscribeLogs = onSnapshot(qLogs, (snapshot) => {
-        if (!snapshot.empty) {
-          this.logs = snapshot.docs.map(doc => {
-            const data = doc.data()
-            return data.message || `[${data.targetLevel || 'No Class'}] [${data.studentName || 'Unknown'}] Q: "${data.question || '-'}" -> Answer: "${data.spokenAnswer || '-'}" (${data.responseTime || '0s'})`
-          })
-        } else {
-          this.logs = []
-        }
-      })
-
-      // --- 2. Listener Rankings ---
-      let qRankings
-
-      if (this.selectedClassFilter) {
-        qRankings = query(
-          logsRef,
+        rankingsQuery = query(
+          collection(db, 'logs'),
           where('targetLevel', '==', this.selectedClassFilter),
           orderBy('responseTimeNum', 'asc')
         )
       } else {
-        qRankings = query(logsRef, orderBy('responseTimeNum', 'asc'))
+        logsQuery = query(collection(db, 'logs'), orderBy('createdAt', 'desc'))
+        rankingsQuery = query(collection(db, 'logs'), orderBy('responseTimeNum', 'asc'))
       }
 
-      this.unsubscribeRankings = onSnapshot(qRankings, (snapshot) => {
-        if (!snapshot.empty) {
-          this.studentRankings = snapshot.docs.map((doc, index) => {
-            const data = doc.data()
-            return {
-              rank: index + 1,
-              studentName: data.studentName || '-',
-              targetLevel: data.targetLevel || '-',
-              topic: data.topic || '-',
-              responseTime: data.responseTime || '-',
-              spokenAnswer: data.spokenAnswer || '-',
-              fluency: `Score: ${data.spellingScore || 0}%`
-            }
-          })
-        } else {
-          this.studentRankings = []
-        }
+      this.unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
+        this.logs = snapshot.docs.map(doc => doc.data())
       })
+
+      this.unsubscribeRankings = onSnapshot(rankingsQuery, (snapshot) => {
+        this.studentRankings = snapshot.docs.map(doc => doc.data())
+      })
+    },
+
+    getScoreClass(score) {
+      if (score >= 85) return 'badge-success'
+      if (score >= 70) return 'badge-warning'
+      return 'badge-danger'
     },
 
     async logout() {
@@ -368,120 +436,6 @@ export default {
       } catch (err) {
         console.error('Logout error:', err)
       }
-    },
-
-    handleFileUpload(event) {
-      const file = event.target.files[0]
-      this.selectedFileName = file ? file.name : ''
-      this.formData.selectedFile = file || null
-    },
-
-    convertFileToBase64(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader()
-        reader.readAsDataURL(file)
-        reader.onload = () => resolve(reader.result)
-        reader.onerror = (error) => reject(error)
-      })
-    },
-
-    async saveTopic() {
-      if (!this.formData.targetLevel.trim()) {
-        alert('Isi Target Level Name terlebih dahulu!')
-        return
-      }
-
-      if (!this.formData.topicTitle.trim()) {
-        alert('Isi Topic Title terlebih dahulu!')
-        return
-      }
-
-      this.isUploading = true
-
-      try {
-        let imageUrl = ''
-        if (this.formData.selectedFile) {
-          imageUrl = await this.convertFileToBase64(this.formData.selectedFile)
-        }
-
-        // Split pertanyaan berdasarkan ';'
-        const questionsArray = this.formData.questions
-          .split(';')
-          .map(q => q.trim())
-          .filter(q => q !== '')
-
-        // Split jawaban guru berdasarkan ';'
-        const expectedAnswersArray = this.formData.expectedAnswers
-          .split(';')
-          .map(a => a.trim())
-          .filter(a => a !== '')
-
-        const levelName = this.formData.targetLevel.trim()
-
-        // 1. Simpan/Update Level di Firestore
-        await setDoc(doc(db, 'levels', levelName), {
-          name: levelName,
-          createdAt: serverTimestamp()
-        }, { merge: true })
-
-        // 2. Simpan Topik beserta Questions dan Expected Answers
-        await addDoc(collection(db, 'topics'), {
-          title: this.formData.topicTitle,
-          questions: questionsArray,
-          expectedAnswers: expectedAnswersArray,
-          targetLevel: levelName,
-          startDateTime: this.formData.startDateTime,
-          dueDateTime: this.formData.dueDateTime,
-          aiVoice: this.formData.aiVoice,
-          imageUrl: imageUrl,
-          createdAt: serverTimestamp()
-        })
-
-        alert(`Topik "${this.formData.topicTitle}" dan kunci jawaban berhasil tersimpan!`)
-        this.clearForm()
-      } catch (err) {
-        console.error('Error menyimpan topik:', err)
-        alert('Gagal menyimpan data ke Firestore.')
-      } finally {
-        this.isUploading = false
-      }
-    },
-
-    async deleteTopic(id, title) {
-      if (confirm(`Hapus topik "${title}"?`)) {
-        try {
-          await deleteDoc(doc(db, 'topics', id))
-        } catch (err) {
-          console.error(err)
-          alert('Gagal menghapus topik.')
-        }
-      }
-    },
-
-    clearForm() {
-      this.formData.topicTitle = ''
-      this.formData.questions = ''
-      this.formData.expectedAnswers = ''
-      this.selectedFileName = ''
-      this.formData.selectedFile = null
-    },
-
-    speakText(text) {
-      if ('speechSynthesis' in window && text) {
-        window.speechSynthesis.cancel()
-        const utterance = new SpeechSynthesisUtterance(text)
-        utterance.lang = this.formData.aiVoice || 'en-US'
-        utterance.rate = 0.9
-        window.speechSynthesis.speak(utterance)
-      } else {
-        alert('Fitur pemutar suara tidak didukung browser ini.')
-      }
-    },
-
-    speakAllQuestions(questionsArray) {
-      if (!questionsArray || questionsArray.length === 0) return
-      const fullText = questionsArray.join('. ')
-      this.speakText(fullText)
     }
   }
 }
@@ -490,7 +444,7 @@ export default {
 <style scoped>
 .teacher-container {
   width: 100%;
-  max-width: 1100px;
+  max-width: 900px;
   margin: 20px auto;
   padding: 0 15px;
   box-sizing: border-box;
@@ -504,160 +458,121 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #ffffff;
+  background-color: #1e293b;
+  color: white;
   padding: 12px 20px;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
-
-.auth-status { font-size: 14px; font-weight: 600; color: #166534; }
-
+.auth-status { font-weight: 600; font-size: 14px; }
 .btn-logout {
-  background-color: #ef4444; color: #ffffff; border: none;
-  padding: 8px 16px; border-radius: 6px; font-weight: 600;
-  cursor: pointer; transition: background 0.2s;
+  background-color: #ef4444; color: white; border: none;
+  padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: bold;
 }
-.btn-logout:hover { background-color: #dc2626; }
 
 .card {
-  background-color: #ffffff; border-radius: 12px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.04); overflow: hidden;
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
 }
-.card-setup { border-left: 6px solid #d97706; }
-.card-section { padding: 20px 24px; }
 
 .card-header {
-  display: flex; align-items: center; padding: 18px 24px;
-  cursor: pointer; user-select: none; background-color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
 }
-.accordion-arrow { color: #d97706; font-size: 12px; margin-right: 8px; }
-.header-icon { font-size: 18px; margin-right: 8px; }
-.header-title { margin: 0; font-size: 18px; font-weight: 700; color: #c2410c; }
+.accordion-arrow { color: #64748b; font-size: 14px; }
+.header-icon { font-size: 20px; }
+.header-title { margin: 0; font-size: 18px; color: #0f172a; flex: 1; }
 
-.card-body { padding: 0 24px 24px 24px; }
+.card-body { margin-top: 20px; }
 .form-group { margin-bottom: 16px; }
-.form-row { display: flex; gap: 20px; }
-.col { flex: 1; }
+.form-label { display: block; font-weight: 700; font-size: 14px; color: #334155; margin-bottom: 6px; }
+.sub-label { display: block; font-weight: 600; font-size: 13px; color: #64748b; margin-bottom: 4px; }
+
+.form-input, .form-select {
+  width: 100%; height: 40px; padding: 0 12px;
+  border-radius: 6px; border: 1px solid #cbd5e1; outline: none; box-sizing: border-box;
+}
+.form-input:focus, .form-select:focus { border-color: #0077b6; }
+.input-answer { border-color: #86efac; background-color: #f0fdf4; }
+
+.form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.col { flex: 1; min-width: 200px; }
+
+.file-input-wrapper { position: relative; }
+.file-input-hidden { display: none; }
+.file-input-label {
+  display: flex; align-items: center; border: 1px solid #cbd5e1;
+  border-radius: 6px; height: 40px; cursor: pointer; overflow: hidden;
+}
+.btn-browse {
+  background-color: #e2e8f0; padding: 0 12px; height: 100%;
+  display: flex; align-items: center; font-size: 13px; font-weight: 600; color: #334155;
+}
+.file-name { padding: 0 12px; font-size: 13px; color: #64748b; }
+
+.divider { height: 1px; background-color: #e2e8f0; margin: 20px 0; }
+
+.btn {
+  height: 42px; border: none; border-radius: 6px; font-weight: bold;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-warning { background-color: #f59e0b; color: white; }
+.btn-warning:hover { background-color: #d97706; }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.preview-section { background-color: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; }
+.preview-title { margin: 0 0 12px 0; font-size: 15px; color: #334155; }
+.empty-preview { font-size: 13px; color: #94a3b8; font-style: italic; }
+
+.topic-list { display: flex; flex-direction: column; gap: 12px; }
+.topic-card { background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; }
+.topic-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.topic-badge { font-weight: 700; color: #0077b6; }
+.level-badge { background-color: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+
+.action-buttons { display: flex; gap: 6px; }
+.btn-voice-small, .btn-delete-small, .btn-speak-single {
+  border: none; padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 600;
+}
+.btn-voice-small { background-color: #e0f2fe; color: #0369a1; }
+.btn-delete-small { background-color: #fee2e2; color: #991b1b; }
+.btn-speak-single { background-color: transparent; font-size: 14px; }
+
+.question-label { font-size: 12px; font-weight: 700; color: #64748b; margin: 0 0 6px 0; }
+.question-ol { margin: 0; padding-left: 20px; font-size: 13px; color: #334155; }
+.question-item { margin-bottom: 6px; }
+.q-and-a { display: flex; flex-direction: column; gap: 2px; }
+.a-text { color: #15803d; font-size: 12px; }
+
+.filter-card { background-color: #f1f5f9; padding: 12px 16px; border-radius: 8px; }
+.filter-group { display: flex; align-items: center; gap: 12px; }
+.filter-label { font-weight: 700; font-size: 14px; color: #334155; white-space: nowrap; }
+.filter-select { max-width: 250px; background-color: white; }
+
+.leaderboard-title, .log-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.leaderboard-title h3, .log-title { margin: 0; font-size: 16px; color: #0f172a; }
+.class-tag { font-size: 12px; font-weight: 700; background-color: #f1f5f9; padding: 2px 8px; border-radius: 4px; color: #475569; }
+
+.table-responsive { overflow-x: auto; }
+.leaderboard-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.leaderboard-table th { background-color: #f8fafc; text-align: left; padding: 10px; color: #475569; border-bottom: 2px solid #e2e8f0; }
+.leaderboard-table td { padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155; }
+.empty-table { text-align: center; color: #94a3b8; padding: 20px !important; }
+
+.score-badge { padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 11px; }
+.badge-success { background-color: #dcfce7; color: #15803d; }
+.badge-warning { background-color: #fef9c3; color: #a16207; }
+.badge-danger { background-color: #fee2e2; color: #b91c1c; }
+
+.log-container { background-color: #0f172a; border-radius: 8px; padding: 16px; max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.log-bubble { font-family: monospace; font-size: 12px; color: #38bdf8; line-height: 1.4; }
+.empty-log { color: #64748b; font-style: italic; }
 
 .mt-10 { margin-top: 10px; }
 .mt-15 { margin-top: 15px; }
 .mt-20 { margin-top: 20px; }
-
-.form-label { display: block; font-size: 15px; font-weight: 700; color: #034078; margin-bottom: 8px; }
-.sub-label { display: block; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 4px; }
-
-.form-input, .form-select {
-  width: 100%; height: 42px; padding: 8px 14px; font-size: 14px;
-  color: #1f2937; background-color: #ffffff; border: 1px solid #d1d5db;
-  border-radius: 8px; box-sizing: border-box; outline: none;
-}
-.form-select { background-color: #f3f4f6; }
-.input-answer { border-color: #86efac; background-color: #f0fdf4; }
-
-.filter-card {
-  background-color: #ffffff; padding: 14px 20px; border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04); border-left: 4px solid #0077b6;
-}
-.filter-group { display: flex; align-items: center; gap: 12px; }
-.filter-label { font-weight: 700; color: #0077b6; font-size: 14px; white-space: nowrap; }
-.filter-select { max-width: 300px; background-color: #ffffff; border-color: #0077b6; }
-
-.file-input-wrapper { width: 100%; }
-.file-input-hidden { display: none; }
-.file-input-label {
-  display: flex; align-items: center; height: 42px; padding: 0 10px;
-  border: 1px solid #d1d5db; border-radius: 8px; background-color: #ffffff;
-  cursor: pointer; box-sizing: border-box;
-}
-.btn-browse {
-  background-color: #f3f4f6; border: 1px solid #d1d5db; padding: 4px 10px;
-  border-radius: 4px; font-size: 13px; color: #1f2937; margin-right: 10px;
-}
-.file-name { font-size: 14px; color: #374151; }
-
-.divider { border-bottom: 1px dashed #fcd34d; margin: 20px 0; }
-
-.btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  height: 46px; padding: 0 20px; font-size: 15px; font-weight: 700;
-  color: #ffffff; border: none; border-radius: 8px; cursor: pointer;
-}
-.btn-icon { margin-right: 8px; font-size: 16px; }
-.btn-warning { background-color: #d97706; }
-
-.preview-section {
-  background-color: #f8fafc; border: 1px solid #e2e8f0;
-  border-radius: 10px; padding: 16px;
-}
-.preview-title { margin: 0 0 12px 0; font-size: 15px; font-weight: 700; color: #034078; }
-.empty-preview { font-size: 13px; color: #64748b; font-style: italic; }
-
-.topic-list { display: flex; flex-direction: column; gap: 12px; }
-.topic-card { background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; }
-.topic-header {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #f1f5f9;
-}
-.topic-info { display: flex; align-items: center; gap: 10px; }
-.action-buttons { display: flex; gap: 8px; }
-
-.topic-badge { font-weight: 700; font-size: 15px; color: #0077b6; }
-.level-badge {
-  font-size: 11px; background-color: #fe2e0e1a; color: #c2410c;
-  padding: 2px 8px; border-radius: 12px; font-weight: 600;
-}
-
-.btn-voice-small {
-  background-color: #e0f2fe; color: #0284c7; border: 1px solid #7dd3fc;
-  padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;
-}
-.btn-voice-small:hover { background-color: #0284c7; color: #ffffff; }
-
-.btn-delete-small {
-  background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5;
-  padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;
-}
-.btn-delete-small:hover { background-color: #dc2626; color: #ffffff; }
-
-.question-label { margin: 0 0 4px 0; font-size: 12px; font-weight: 600; color: #64748b; }
-.question-ol { margin: 0; padding-left: 20px; font-size: 13px; color: #334155; }
-.question-item { margin-bottom: 8px; }
-
-.q-and-a { display: flex; flex-direction: column; gap: 2px; }
-.q-text { color: #1e293b; }
-.a-text { font-size: 12px; color: #15803d; margin-top: 2px; }
-
-.btn-speak-single {
-  background: transparent; border: none; cursor: pointer; font-size: 13px;
-  margin-left: 6px; padding: 2px 4px; border-radius: 4px;
-}
-.btn-speak-single:hover { background-color: #e2e8f0; }
-
-.leaderboard-title { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
-.leaderboard-title h3 { margin: 0; font-size: 16px; font-weight: 800; color: #003049; }
-.class-tag { background-color: #e0f2fe; color: #0369a1; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; }
-
-.table-responsive { width: 100%; overflow-x: auto; }
-.leaderboard-table { width: 100%; border-collapse: collapse; }
-.leaderboard-table th {
-  background-color: #0077b6; color: #ffffff; font-size: 14px;
-  font-weight: 700; padding: 12px 16px; text-align: left;
-}
-.leaderboard-table td { padding: 12px 16px; font-size: 14px; border-bottom: 1px solid #f0f0f0; }
-.empty-table { text-align: center; color: #9ca3af; padding: 20px !important; }
-
-.log-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.log-title { margin: 0; font-size: 16px; font-weight: 800; color: #003049; }
-.log-container {
-  background-color: #f8fafc; border-radius: 8px; padding: 16px;
-  display: flex; flex-direction: column; gap: 10px; max-height: 350px; overflow-y: auto;
-}
-.log-bubble { background-color: #e0e7ff; color: #1e3a8a; padding: 12px 18px; border-radius: 8px; font-size: 14px; }
-.empty-log { background-color: #f1f5f9; color: #64748b; font-style: italic; text-align: center; }
-
-@media (max-width: 768px) {
-  .form-row { flex-direction: column; gap: 12px; }
-  .filter-group { flex-direction: column; align-items: flex-start; }
-  .filter-select { max-width: 100%; }
-}
 </style>
