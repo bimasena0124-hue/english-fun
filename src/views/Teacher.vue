@@ -61,7 +61,7 @@
 
         <!-- Manage Topics -->
         <div class="form-group">
-          <label class="form-label">5. Manage Topics:</label>
+          <label class="form-label">5. Manage Topics & Expected Answers:</label>
           
           <div class="form-row">
             <div class="col">
@@ -88,12 +88,25 @@
             </div>
           </div>
 
+          <!-- Input Pertanyaan -->
           <div class="form-group mt-10">
+            <label class="sub-label">Questions (separated by semicolon ';'):</label>
             <input
               v-model="formData.questions"
               type="text"
               class="form-input"
-              placeholder="Questions separated by semicolon (e.g. What is this animal?; Where does it live?)"
+              placeholder="e.g. What animal is this?; Where does it live?"
+            />
+          </div>
+
+          <!-- Input Kunci Jawaban / Expected Answers dari Guru -->
+          <div class="form-group mt-10">
+            <label class="sub-label">Expected Answers / Target Answers (separated by semicolon ';'):</label>
+            <input
+              v-model="formData.expectedAnswers"
+              type="text"
+              class="form-input input-answer"
+              placeholder="e.g. It is a dolphin; It lives in the ocean"
             />
           </div>
 
@@ -112,7 +125,7 @@
 
         <!-- AREA PREVIEW & HAPUS SOAL -->
         <div class="preview-section mt-20">
-          <h3 class="preview-title">📋 Student Questions Preview & Management</h3>
+          <h3 class="preview-title">📋 Student Questions & Expected Answers Preview</h3>
           
           <div v-if="topicsList.length === 0" class="empty-preview">
             Belum ada topik tersimpan di database.
@@ -136,13 +149,20 @@
               </div>
 
               <div class="topic-questions">
-                <p class="question-label">Questions Preview:</p>
+                <p class="question-label">Questions & Answer Key Preview:</p>
                 <ol class="question-ol">
                   <li v-for="(q, index) in topic.questions" :key="index" class="question-item">
-                    <span>"{{ q }}"</span>
-                    <button class="btn-speak-single" @click="speakText(q)" title="Play question audio">
-                      🔊
-                    </button>
+                    <div class="q-and-a">
+                      <div class="q-text">
+                        <strong>Q:</strong> "{{ q }}"
+                        <button class="btn-speak-single" @click="speakText(q)" title="Play question audio">
+                          🔊
+                        </button>
+                      </div>
+                      <div class="a-text" v-if="topic.expectedAnswers && topic.expectedAnswers[index]">
+                        <strong>Expected Answer:</strong> <em>"{{ topic.expectedAnswers[index] }}"</em>
+                      </div>
+                    </div>
                   </li>
                 </ol>
               </div>
@@ -245,6 +265,7 @@ export default {
         aiVoice: 'en-US',
         topicTitle: '',
         questions: '',
+        expectedAnswers: '', // State untuk menyimpan input jawaban dari guru
         selectedFile: null
       },
       topicsList: [],
@@ -274,13 +295,11 @@ export default {
     this.setupRealtimeListeners()
   },
   beforeUnmount() {
-    // Clean listener saat komponen dilepas
     if (this.unsubscribeLogs) this.unsubscribeLogs()
     if (this.unsubscribeRankings) this.unsubscribeRankings()
   },
   methods: {
     setupRealtimeListeners() {
-      // Unsubscribe listener terdahulu jika ada
       if (this.unsubscribeLogs) this.unsubscribeLogs()
       if (this.unsubscribeRankings) this.unsubscribeRankings()
 
@@ -309,7 +328,7 @@ export default {
         }
       })
 
-      // --- 2. Listener Rankings (Semua Siswa Diurutkan Berdasarkan Waktu Respon) ---
+      // --- 2. Listener Rankings ---
       let qRankings
 
       if (this.selectedClassFilter) {
@@ -385,10 +404,17 @@ export default {
           imageUrl = await this.convertFileToBase64(this.formData.selectedFile)
         }
 
+        // Split pertanyaan berdasarkan ';'
         const questionsArray = this.formData.questions
           .split(';')
           .map(q => q.trim())
           .filter(q => q !== '')
+
+        // Split jawaban guru berdasarkan ';'
+        const expectedAnswersArray = this.formData.expectedAnswers
+          .split(';')
+          .map(a => a.trim())
+          .filter(a => a !== '')
 
         const levelName = this.formData.targetLevel.trim()
 
@@ -398,10 +424,11 @@ export default {
           createdAt: serverTimestamp()
         }, { merge: true })
 
-        // 2. Simpan Topik dengan Target Level
+        // 2. Simpan Topik beserta Questions dan Expected Answers
         await addDoc(collection(db, 'topics'), {
           title: this.formData.topicTitle,
           questions: questionsArray,
+          expectedAnswers: expectedAnswersArray,
           targetLevel: levelName,
           startDateTime: this.formData.startDateTime,
           dueDateTime: this.formData.dueDateTime,
@@ -410,7 +437,7 @@ export default {
           createdAt: serverTimestamp()
         })
 
-        alert(`Topik "${this.formData.topicTitle}" untuk level "${levelName}" berhasil tersimpan!`)
+        alert(`Topik "${this.formData.topicTitle}" dan kunci jawaban berhasil tersimpan!`)
         this.clearForm()
       } catch (err) {
         console.error('Error menyimpan topik:', err)
@@ -434,6 +461,7 @@ export default {
     clearForm() {
       this.formData.topicTitle = ''
       this.formData.questions = ''
+      this.formData.expectedAnswers = ''
       this.selectedFileName = ''
       this.formData.selectedFile = null
     },
@@ -516,6 +544,7 @@ export default {
 .mt-20 { margin-top: 20px; }
 
 .form-label { display: block; font-size: 15px; font-weight: 700; color: #034078; margin-bottom: 8px; }
+.sub-label { display: block; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 4px; }
 
 .form-input, .form-select {
   width: 100%; height: 42px; padding: 8px 14px; font-size: 14px;
@@ -523,6 +552,7 @@ export default {
   border-radius: 8px; box-sizing: border-box; outline: none;
 }
 .form-select { background-color: #f3f4f6; }
+.input-answer { border-color: #86efac; background-color: #f0fdf4; }
 
 .filter-card {
   background-color: #ffffff; padding: 14px 20px; border-radius: 8px;
@@ -591,7 +621,11 @@ export default {
 
 .question-label { margin: 0 0 4px 0; font-size: 12px; font-weight: 600; color: #64748b; }
 .question-ol { margin: 0; padding-left: 20px; font-size: 13px; color: #334155; }
-.question-item { margin-bottom: 4px; }
+.question-item { margin-bottom: 8px; }
+
+.q-and-a { display: flex; flex-direction: column; gap: 2px; }
+.q-text { color: #1e293b; }
+.a-text { font-size: 12px; color: #15803d; margin-top: 2px; }
 
 .btn-speak-single {
   background: transparent; border: none; cursor: pointer; font-size: 13px;
