@@ -292,7 +292,7 @@ export default {
         window.speechSynthesis.cancel()
         const utterance = new SpeechSynthesisUtterance(text)
         utterance.lang = this.currentTopic?.aiVoice || 'en-US'
-        utterance.rate = 0.7
+        utterance.rate = 0.65
         window.speechSynthesis.speak(utterance)
       }
     },
