@@ -2,6 +2,7 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import { getStorage } from "firebase/storage"; // 1. Tambahkan import ini
 
 // Konfigurasi Firebase milikmu
 const firebaseConfig = {
@@ -17,9 +18,10 @@ const firebaseConfig = {
 // Inisialisasi Firebase App
 const app = initializeApp(firebaseConfig);
 
-// Inisialisasi Service Firestore & Auth
+// Inisialisasi Service Firestore, Auth, dan Storage
 const db = getFirestore(app);
 const auth = getAuth(app);
+const storage = getStorage(app); // 2. Inisialisasi Storage
 
-// Export db dan auth agar bisa di-import di Login.vue dan Teacher.vue
-export { db, auth };
+// Export db, auth, dan storage agar bisa di-import di Teacher.vue atau file lainnya
+export { db, auth, storage }; // 3. Export storage
