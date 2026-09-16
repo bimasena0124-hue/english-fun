@@ -1,318 +1,162 @@
 <template>
   <div class="teacher-container">
-    <!-- Tombol Logout & Header Status -->
-    <div class="top-bar">
-      <span class="auth-status">🟢 Logged in as Teacher</span>
-      <button @click="logout" class="btn-logout">🚪 Logout</button>
-    </div>
+    <header class="header">
+      <h1>Teacher Dashboard</h1>
+      <button class="logout-btn" @click="handleLogout">Logout</button>
+    </header>
 
-    <!-- 1. SECTION: TEACHER SETUP -->
-    <div class="card card-setup">
-      <!-- Header Accordion -->
-      <div class="card-header" @click="isExpanded = !isExpanded">
-        <span class="accordion-arrow">{{ isExpanded ? '▼' : '▶' }}</span>
-        <span class="header-icon">⚙️</span>
-        <h2 class="header-title">Teacher Setup & Topic Generator</h2>
-      </div>
-
-      <!-- Content / Form -->
-      <div v-show="isExpanded" class="card-body">
-        <!-- Target Level Name -->
-        <div class="form-group">
-          <label class="form-label">1. Class Name (Primary Key / Group):</label>
-          <input
-            v-model="formData.targetLevel"
-            type="text"
-            class="form-input"
-            placeholder="e.g. Grade 1 Elementary / Beginner"
-          />
-        </div>
-
-        <!-- Start Date & Due Date -->
-        <div class="form-row">
-          <div class="form-group col">
-            <label class="form-label">2. Start Date & Time:</label>
-            <input
-              v-model="formData.startDateTime"
-              type="datetime-local"
-              class="form-input"
+    <main class="content">
+      <!-- Section Form Input Topik -->
+      <section class="card form-section">
+        <h2>Add / Edit Topic</h2>
+        <form @submit.prevent="saveTopic">
+          <div class="form-group">
+            <label>Target Level / Class</label>
+            <input 
+              v-model="formData.targetLevel" 
+              type="text" 
+              placeholder="e.g. Class 10-A" 
+              required 
             />
           </div>
-          <div class="form-group col">
-            <label class="form-label">3. Due Date & Time:</label>
-            <input
-              v-model="formData.dueDateTime"
-              type="datetime-local"
-              class="form-input"
+
+          <div class="form-group">
+            <label>Topic Title</label>
+            <input 
+              v-model="formData.topicTitle" 
+              type="text" 
+              placeholder="e.g. Daily Routines" 
+              required 
             />
           </div>
-        </div>
 
-        <!-- Select AI Voice -->
-        <div class="form-group">
-          <label class="form-label">4. Select AI Voice:</label>
-          <select v-model="formData.aiVoice" class="form-select">
-            <option value="en-US">English (United States) - Standard</option>
-            <option value="en-GB">English (United Kingdom) - Standard</option>
-          </select>
-        </div>
-
-        <div class="divider"></div>
-
-        <!-- Manage Topics -->
-        <div class="form-group">
-          <label class="form-label">5. Manage Topics & Expected Answers:</label>
-          
           <div class="form-row">
-            <div class="col">
-              <input
-                v-model="formData.topicTitle"
-                type="text"
-                class="form-input"
-                placeholder="Topic Title (e.g. Dolphin)"
+            <div class="form-group">
+              <label>Start Date & Time</label>
+              <input v-model="formData.startDateTime" type="datetime-local" required />
+            </div>
+            <div class="form-group">
+              <label>Due Date & Time</label>
+              <input v-model="formData.dueDateTime" type="datetime-local" required />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>AI Voice Accent</label>
+            <select v-model="formData.aiVoice">
+              <option value="en-US">English (US)</option>
+              <option value="en-GB">English (UK)</option>
+              <option value="en-AU">English (Australia)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Upload Topic Image</label>
+            <input 
+              type="file" 
+              accept="image/*" 
+              @change="handleFileUpload" 
+            />
+            <p v-if="selectedFileName" class="file-name">Selected: {{ selectedFileName }}</p>
+          </div>
+
+          <div class="form-group">
+            <label>Questions (Separate each question with semicolons ';')</label>
+            <textarea 
+              v-model="formData.questions" 
+              rows="3" 
+              placeholder="What is your favorite food?; How often do you eat it?"
+              required
+            ></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>Expected Answers (Separate with semicolons ';')</label>
+            <textarea 
+              v-model="formData.expectedAnswers" 
+              rows="3" 
+              placeholder="My favorite food is...; I eat it every..."
+            ></textarea>
+          </div>
+
+          <button type="submit" class="submit-btn" :disabled="isUploading">
+            {{ isUploading ? 'Uploading & Saving...' : 'Save Topic' }}
+          </button>
+        </form>
+      </section>
+
+      <!-- Section Daftar Topik yang Ada -->
+      <section class="card list-section">
+        <h2>Existing Topics</h2>
+        <div v-if="loading" class="loading">Loading topics...</div>
+        <div v-else-if="topics.length === 0" class="empty">No topics created yet.</div>
+        
+        <div v-else class="topic-grid">
+          <div v-for="topic in topics" :key="topic.id" class="topic-card">
+            <div class="topic-image-container">
+              <img 
+                v-if="topic.imageUrl" 
+                :src="topic.imageUrl" 
+                :alt="topic.title" 
+                class="topic-image" 
               />
+              <div v-else class="no-image">No Image Available</div>
             </div>
-            <div class="col">
-              <div class="file-input-wrapper">
-                <input
-                  type="file"
-                  id="file-upload"
-                  @change="handleFileUpload"
-                  class="file-input-hidden"
-                />
-                <label for="file-upload" class="file-input-label">
-                  <span class="btn-browse">Browse...</span>
-                  <span class="file-name">{{ selectedFileName || 'No file selected.' }}</span>
-                </label>
-              </div>
-            </div>
-          </div>
 
-          <!-- Input Pertanyaan -->
-          <div class="form-group mt-10">
-            <label class="sub-label">Questions (separated by semicolon ';'):</label>
-            <input
-              v-model="formData.questions"
-              type="text"
-              class="form-input"
-              placeholder="e.g. What animal is this?; Where does it live?"
-            />
-          </div>
-
-          <!-- Input Kunci Jawaban / Expected Answers dari Guru -->
-          <div class="form-group mt-10">
-            <label class="sub-label">Expected Answers / Target Answers (separated by semicolon ';'):</label>
-            <input
-              v-model="formData.expectedAnswers"
-              type="text"
-              class="form-input input-answer"
-              placeholder="e.g. It is a dolphin; It lives in the ocean"
-            />
-          </div>
-
-          <!-- Action Buttons -->
-          <div class="form-row mt-15">
-            <button 
-              class="btn btn-warning col" 
-              :disabled="isUploading" 
-              @click="saveTopic"
-            >
-              <span class="btn-icon">+</span> 
-              {{ isUploading ? 'Uploading & Saving...' : 'Save New Topic & Level' }}
-            </button>
-          </div>
-        </div>
-
-        <!-- AREA PREVIEW & HAPUS SOAL -->
-        <div class="preview-section mt-20">
-          <h3 class="preview-title">📋 Student Questions & Expected Answers Preview</h3>
-          
-          <div v-if="topicsList.length === 0" class="empty-preview">
-            Belum ada topik tersimpan di database.
-          </div>
-
-          <div v-else class="topic-list">
-            <div v-for="topic in topicsList" :key="topic.id" class="topic-card">
-              <div class="topic-header">
-                <div class="topic-info">
-                  <span class="topic-badge">🐬 {{ topic.title }}</span>
-                  <span class="level-badge">{{ topic.targetLevel }}</span>
-                </div>
-                <div class="action-buttons">
-                  <button class="btn-voice-small" @click="speakAllQuestions(topic.questions)">
-                    🔊 Read All Questions
-                  </button>
-                  <button class="btn-delete-small" @click="deleteTopic(topic.id, topic.title)">
-                    🗑️ Delete Topic
-                  </button>
-                </div>
-              </div>
-
-              <div class="topic-questions">
-                <p class="question-label">Questions & Answer Key Preview:</p>
-                <ol class="question-ol">
-                  <li v-for="(q, index) in topic.questions" :key="index" class="question-item">
-                    <div class="q-and-a">
-                      <div class="q-text">
-                        <strong>Q:</strong> "{{ q }}"
-                        <button class="btn-speak-single" @click="speakText(q)" title="Play question audio">
-                          🔊
-                        </button>
-                      </div>
-                      <div class="a-text" v-if="topic.expectedAnswers && topic.expectedAnswers[index]">
-                        <strong>Expected Answer:</strong> <em>"{{ topic.expectedAnswers[index] }}"</em>
-                      </div>
-                    </div>
-                  </li>
-                </ol>
-              </div>
+            <div class="topic-info">
+              <span class="badge">{{ topic.targetLevel }}</span>
+              <h3>{{ topic.title }}</h3>
+              <p><strong>Voice:</strong> {{ topic.aiVoice }}</p>
+              <p><strong>Due:</strong> {{ formatDate(topic.dueDateTime) }}</p>
+              <p><strong>Questions:</strong> {{ topic.questions ? topic.questions.length : 0 }} item(s)</p>
+              
+              <button class="delete-btn" @click="deleteTopic(topic.id)">Delete</button>
             </div>
           </div>
         </div>
-
-      </div>
-    </div>
-
-    <!-- FILTER BAR UNTUK MONITORING KELAS -->
-    <div class="filter-card">
-      <div class="filter-group">
-        <label class="filter-label">🎯 Filter by Class Name:</label>
-        <select v-model="selectedClassFilter" @change="setupRealtimeListeners" class="form-select filter-select">
-          <option value="">-- All Classes --</option>
-          <option v-for="lvl in availableLevels" :key="lvl" :value="lvl">
-            {{ lvl }}
-          </option>
-        </select>
-      </div>
-    </div>
-
-    <!-- 2. SECTION: STUDENT RANKINGS -->
-    <div class="card card-section">
-      <div class="leaderboard-title">
-        <span class="trophy-icon">🏆</span>
-        <h3>STUDENT RANKINGS (ALL RESPONSES)</h3>
-        <span class="class-tag" v-if="selectedClassFilter">Class: {{ selectedClassFilter }}</span>
-      </div>
-      
-      <div class="table-responsive">
-        <table class="leaderboard-table">
-          <thead>
-            <tr>
-              <th>Rank</th>
-              <th>Student Name</th>
-              <th>Class / Level</th>
-              <th>Topic</th>
-              <th>Response Time</th>
-              <th>Spoken Answer</th>
-              <th>Fluency & Evaluation</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(item, index) in studentRankings" :key="index">
-              <td>{{ index + 1 }}</td>
-              <td>{{ item.studentName }}</td>
-              <td><span class="level-badge">{{ item.targetLevel }}</span></td>
-              <td>{{ item.topic }}</td>
-              <td>{{ item.responseTime }}</td>
-              <td>{{ item.spokenAnswer }}</td>
-              <td>
-                <span :class="['score-badge', getScoreClass(item.spellingScore)]">
-                  {{ item.spellingScore }}% Accuracy
-                </span>
-              </td>
-            </tr>
-            <tr v-if="studentRankings.length === 0">
-              <td colspan="7" class="empty-table">No data available for this class.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- 3. SECTION: INTERACTION LOG -->
-    <div class="card card-section">
-      <div class="log-header">
-        <h3 class="log-title">Interaction Log:</h3>
-        <span class="class-tag" v-if="selectedClassFilter">Class: {{ selectedClassFilter }}</span>
-      </div>
-      <div class="log-container">
-        <div v-for="(log, idx) in logs" :key="idx" class="log-bubble">
-          {{ log.message || log }}
-        </div>
-        <div v-if="logs.length === 0" class="log-bubble empty-log">
-          Belum ada aktivitas interaksi dari siswa di kelas ini.
-        </div>
-      </div>
-    </div>
-
+      </section>
+    </main>
   </div>
 </template>
 
 <script>
-import { db, auth } from '@/firebase'
+import { db, auth, storage } from '@/firebase'
+import { signOut } from 'firebase/auth'
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { 
   collection, 
   addDoc, 
+  getDocs, 
   deleteDoc, 
   doc, 
-  onSnapshot, 
-  query, 
-  orderBy, 
-  where, 
-  serverTimestamp, 
   setDoc, 
-  getDocs 
+  serverTimestamp, 
+  query, 
+  orderBy 
 } from 'firebase/firestore'
-import { signOut } from 'firebase/auth'
 
 export default {
-  name: 'Teacher',
+  name: 'TeacherView',
   data() {
     return {
-      isExpanded: true,
-      selectedFileName: '',
       isUploading: false,
-      selectedClassFilter: '',
-      availableLevels: [],
+      loading: true,
+      selectedFileName: '',
       formData: {
-        targetLevel: 'Grade 1 Elementary',
+        targetLevel: '',
+        topicTitle: '',
         startDateTime: '',
         dueDateTime: '',
         aiVoice: 'en-US',
-        topicTitle: '',
+        selectedFile: null,
         questions: '',
-        expectedAnswers: '',
-        selectedFile: null
+        expectedAnswers: ''
       },
-      topicsList: [],
-      studentRankings: [],
-      logs: [],
-      unsubscribeLogs: null,
-      unsubscribeRankings: null
+      topics: []
     }
   },
   mounted() {
-    // 1. Fetch Topics
-    const qTopics = query(collection(db, 'topics'), orderBy('createdAt', 'desc'))
-    onSnapshot(qTopics, (snapshot) => {
-      this.topicsList = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }))
-    })
-
-    // 2. Fetch Levels
-    const qLevels = query(collection(db, 'levels'), orderBy('createdAt', 'asc'))
-    onSnapshot(qLevels, (snapshot) => {
-      this.availableLevels = snapshot.docs.map(doc => doc.data().name || doc.id)
-    })
-
-    // 3. Setup realtime log & ranking listener
-    this.setupRealtimeListeners()
-  },
-  unmounted() {
-    if (this.unsubscribeLogs) this.unsubscribeLogs()
-    if (this.unsubscribeRankings) this.unsubscribeRankings()
+    this.fetchTopics()
   },
   methods: {
     handleFileUpload(event) {
@@ -331,7 +175,17 @@ export default {
 
       try {
         this.isUploading = true
+        let uploadedImageUrl = ''
 
+        // 1. Upload Gambar ke Firebase Storage jika ada file yang dipilih
+        if (this.formData.selectedFile) {
+          const file = this.formData.selectedFile
+          const storageRef = ref(storage, `topics/${Date.now()}_${file.name}`)
+          const snapshot = await uploadBytes(storageRef, file)
+          uploadedImageUrl = await getDownloadURL(snapshot.ref)
+        }
+
+        // Parsing String ke Array
         const questionsArray = this.formData.questions
           .split(';')
           .map(q => q.trim())
@@ -342,19 +196,20 @@ export default {
           .map(a => a.trim())
           .filter(a => a !== '')
 
-        // 1. Simpan Topik ke Firestore
+        // 2. Simpan Dokumen Topik ke Firestore (menyimpan imageUrl)
         await addDoc(collection(db, 'topics'), {
           targetLevel: this.formData.targetLevel,
           title: this.formData.topicTitle,
           aiVoice: this.formData.aiVoice,
           startDateTime: this.formData.startDateTime,
           dueDateTime: this.formData.dueDateTime,
+          imageUrl: uploadedImageUrl,
           questions: questionsArray,
           expectedAnswers: expectedAnswersArray,
           createdAt: serverTimestamp()
         })
 
-        // 2. Simpan/Update Kelas ke Koleksi 'levels'
+        // 3. Simpan/Update Kelas ke Koleksi 'levels'
         await setDoc(doc(db, 'levels', this.formData.targetLevel), {
           name: this.formData.targetLevel,
           createdAt: serverTimestamp()
@@ -362,11 +217,10 @@ export default {
 
         alert('Topic and Level successfully saved!')
 
-        this.formData.topicTitle = ''
-        this.formData.questions = ''
-        this.formData.expectedAnswers = ''
-        this.formData.selectedFile = null
-        this.selectedFileName = ''
+        // Reset Form
+        this.resetForm()
+        // Refresh daftar topik
+        this.fetchTopics()
       } catch (error) {
         console.error('Error saving topic:', error)
         alert('Failed to save topic: ' + error.message)
@@ -375,91 +229,61 @@ export default {
       }
     },
 
-    // PERBAIKAN: Menghapus dokumen 'topics' sekaligus cek & hapus 'levels' jika topik sudah habis
-    async deleteTopic(id, title) {
-      const topicToDelete = this.topicsList.find(t => t.id === id)
-      if (!topicToDelete) return
+    async fetchTopics() {
+      try {
+        this.loading = true
+        const q = query(collection(db, 'topics'), orderBy('createdAt', 'desc'))
+        const querySnapshot = await getDocs(q)
+        
+        this.topics = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+      } catch (error) {
+        console.error('Error fetching topics:', error)
+      } finally {
+        this.loading = false
+      }
+    },
 
-      const targetLevel = topicToDelete.targetLevel
-
-      if (confirm(`Are you sure you want to delete topic "${title}"?`)) {
+    async deleteTopic(id) {
+      if (confirm('Are you sure you want to delete this topic?')) {
         try {
-          // 1. Hapus dokumen topik dari koleksi 'topics'
           await deleteDoc(doc(db, 'topics', id))
-
-          // 2. Cek apakah masih ada topik lain yang memakai targetLevel ini
-          const q = query(collection(db, 'topics'), where('targetLevel', '==', targetLevel))
-          const remainingTopics = await getDocs(q)
-
-          // 3. Jika tidak ada topik tersisa di kelas ini, hapus dari koleksi 'levels'
-          if (remainingTopics.empty) {
-            await deleteDoc(doc(db, 'levels', targetLevel))
-          }
-        } catch (err) {
-          console.error('Failed to delete topic & level:', err)
+          this.topics = this.topics.filter(t => t.id !== id)
+          alert('Topic deleted successfully.')
+        } catch (error) {
+          console.error('Error deleting topic:', error)
+          alert('Failed to delete topic.')
         }
       }
     },
 
-    speakText(text) {
-      if ('speechSynthesis' in window && text) {
-        window.speechSynthesis.cancel()
-        const utterance = new SpeechSynthesisUtterance(text)
-        utterance.lang = this.formData.aiVoice || 'en-US'
-        window.speechSynthesis.speak(utterance)
+    resetForm() {
+      this.formData = {
+        targetLevel: '',
+        topicTitle: '',
+        startDateTime: '',
+        dueDateTime: '',
+        aiVoice: 'en-US',
+        selectedFile: null,
+        questions: '',
+        expectedAnswers: ''
       }
+      this.selectedFileName = ''
     },
 
-    speakAllQuestions(questions) {
-      if (!questions || !questions.length) return
-      const text = questions.join('. ')
-      this.speakText(text)
+    formatDate(dateTimeStr) {
+      if (!dateTimeStr) return '-'
+      return new Date(dateTimeStr).toLocaleString()
     },
 
-    setupRealtimeListeners() {
-      if (this.unsubscribeLogs) this.unsubscribeLogs()
-      if (this.unsubscribeRankings) this.unsubscribeRankings()
-
-      let logsQuery
-      let rankingsQuery
-
-      if (this.selectedClassFilter) {
-        logsQuery = query(
-          collection(db, 'logs'),
-          where('targetLevel', '==', this.selectedClassFilter),
-          orderBy('createdAt', 'desc')
-        )
-        rankingsQuery = query(
-          collection(db, 'logs'),
-          where('targetLevel', '==', this.selectedClassFilter),
-          orderBy('responseTimeNum', 'asc')
-        )
-      } else {
-        logsQuery = query(collection(db, 'logs'), orderBy('createdAt', 'desc'))
-        rankingsQuery = query(collection(db, 'logs'), orderBy('responseTimeNum', 'asc'))
-      }
-
-      this.unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
-        this.logs = snapshot.docs.map(doc => doc.data())
-      })
-
-      this.unsubscribeRankings = onSnapshot(rankingsQuery, (snapshot) => {
-        this.studentRankings = snapshot.docs.map(doc => doc.data())
-      })
-    },
-
-    getScoreClass(score) {
-      if (score >= 85) return 'badge-success'
-      if (score >= 70) return 'badge-warning'
-      return 'badge-danger'
-    },
-
-    async logout() {
+    async handleLogout() {
       try {
         await signOut(auth)
         this.$router.push('/login')
-      } catch (err) {
-        console.error('Logout error:', err)
+      } catch (error) {
+        console.error('Logout error:', error)
       }
     }
   }
@@ -468,136 +292,133 @@ export default {
 
 <style scoped>
 .teacher-container {
-  width: 100%;
-  max-width: 900px;
-  margin: 20px auto;
-  padding: 0 15px;
-  box-sizing: border-box;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: Arial, sans-serif;
 }
 
-.top-bar {
+.header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #1e293b;
-  color: white;
-  padding: 12px 20px;
-  border-radius: 8px;
+  margin-bottom: 24px;
 }
-.auth-status { font-weight: 600; font-size: 14px; }
-.btn-logout {
-  background-color: #ef4444; color: white; border: none;
-  padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: bold;
+
+.logout-btn {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
 .card {
-  background-color: #ffffff;
-  border-radius: 12px;
+  background: white;
+  border-radius: 8px;
   padding: 24px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
-.card-header {
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+.form-group input, 
+.form-group select, 
+.form-group textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.form-row {
+  display: flex;
+  gap: 16px;
+}
+
+.form-row .form-group {
+  flex: 1;
+}
+
+.submit-btn {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  font-size: 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.submit-btn:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.topic-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+  margin-top: 16px;
+}
+
+.topic-card {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fafafa;
+}
+
+.topic-image-container {
+  width: 100%;
+  height: 160px;
+  background-color: #e9ecef;
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+}
+
+.topic-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.no-image {
+  color: #6c757d;
+  font-size: 14px;
+}
+
+.topic-info {
+  padding: 16px;
+}
+
+.badge {
+  background-color: #007bff;
+  color: white;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.delete-btn {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
   cursor: pointer;
-  user-select: none;
+  margin-top: 8px;
 }
-.accordion-arrow { color: #64748b; font-size: 14px; }
-.header-icon { font-size: 20px; }
-.header-title { margin: 0; font-size: 18px; color: #0f172a; flex: 1; }
-
-.card-body { margin-top: 20px; }
-.form-group { margin-bottom: 16px; }
-.form-label { display: block; font-weight: 700; font-size: 14px; color: #334155; margin-bottom: 6px; }
-.sub-label { display: block; font-weight: 600; font-size: 13px; color: #64748b; margin-bottom: 4px; }
-
-.form-input, .form-select {
-  width: 100%; height: 40px; padding: 0 12px;
-  border-radius: 6px; border: 1px solid #cbd5e1; outline: none; box-sizing: border-box;
-}
-.form-input:focus, .form-select:focus { border-color: #0077b6; }
-.input-answer { border-color: #86efac; background-color: #f0fdf4; }
-
-.form-row { display: flex; gap: 12px; flex-wrap: wrap; }
-.col { flex: 1; min-width: 200px; }
-
-.file-input-wrapper { position: relative; }
-.file-input-hidden { display: none; }
-.file-input-label {
-  display: flex; align-items: center; border: 1px solid #cbd5e1;
-  border-radius: 6px; height: 40px; cursor: pointer; overflow: hidden;
-}
-.btn-browse {
-  background-color: #e2e8f0; padding: 0 12px; height: 100%;
-  display: flex; align-items: center; font-size: 13px; font-weight: 600; color: #334155;
-}
-.file-name { padding: 0 12px; font-size: 13px; color: #64748b; }
-
-.divider { height: 1px; background-color: #e2e8f0; margin: 20px 0; }
-
-.btn {
-  height: 42px; border: none; border-radius: 6px; font-weight: bold;
-  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
-}
-.btn-warning { background-color: #f59e0b; color: white; }
-.btn-warning:hover { background-color: #d97706; }
-.btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-.preview-section { background-color: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; }
-.preview-title { margin: 0 0 12px 0; font-size: 15px; color: #334155; }
-.empty-preview { font-size: 13px; color: #94a3b8; font-style: italic; }
-
-.topic-list { display: flex; flex-direction: column; gap: 12px; }
-.topic-card { background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; }
-.topic-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.topic-badge { font-weight: 700; color: #0077b6; }
-.level-badge { background-color: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
-
-.action-buttons { display: flex; gap: 6px; }
-.btn-voice-small, .btn-delete-small, .btn-speak-single {
-  border: none; padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 600;
-}
-.btn-voice-small { background-color: #e0f2fe; color: #0369a1; }
-.btn-delete-small { background-color: #fee2e2; color: #991b1b; }
-.btn-speak-single { background-color: transparent; font-size: 14px; }
-
-.question-label { font-size: 12px; font-weight: 700; color: #64748b; margin: 0 0 6px 0; }
-.question-ol { margin: 0; padding-left: 20px; font-size: 13px; color: #334155; }
-.question-item { margin-bottom: 6px; }
-.q-and-a { display: flex; flex-direction: column; gap: 2px; }
-.a-text { color: #15803d; font-size: 12px; }
-
-.filter-card { background-color: #f1f5f9; padding: 12px 16px; border-radius: 8px; }
-.filter-group { display: flex; align-items: center; gap: 12px; }
-.filter-label { font-weight: 700; font-size: 14px; color: #334155; white-space: nowrap; }
-.filter-select { max-width: 250px; background-color: white; }
-
-.leaderboard-title, .log-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
-.leaderboard-title h3, .log-title { margin: 0; font-size: 16px; color: #0f172a; }
-.class-tag { font-size: 12px; font-weight: 700; background-color: #f1f5f9; padding: 2px 8px; border-radius: 4px; color: #475569; }
-
-.table-responsive { overflow-x: auto; }
-.leaderboard-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.leaderboard-table th { background-color: #f8fafc; text-align: left; padding: 10px; color: #475569; border-bottom: 2px solid #e2e8f0; }
-.leaderboard-table td { padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155; }
-.empty-table { text-align: center; color: #94a3b8; padding: 20px !important; }
-
-.score-badge { padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 11px; }
-.badge-success { background-color: #dcfce7; color: #15803d; }
-.badge-warning { background-color: #fef9c3; color: #a16207; }
-.badge-danger { background-color: #fee2e2; color: #b91c1c; }
-
-.log-container { background-color: #0f172a; border-radius: 8px; padding: 16px; max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-.log-bubble { font-family: monospace; font-size: 12px; color: #38bdf8; line-height: 1.4; }
-.empty-log { color: #64748b; font-style: italic; }
-
-.mt-10 { margin-top: 10px; }
-.mt-15 { margin-top: 15px; }
-.mt-20 { margin-top: 20px; }
 </style>
