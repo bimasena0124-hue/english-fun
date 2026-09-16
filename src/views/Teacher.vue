@@ -195,9 +195,19 @@
     <!-- 2. SECTION: STUDENT RANKINGS -->
     <div class="card card-section">
       <div class="leaderboard-title">
-        <span class="trophy-icon">🏆</span>
-        <h3>STUDENT RANKINGS (ALL RESPONSES)</h3>
-        <span class="class-tag" v-if="selectedClassFilter">Class: {{ selectedClassFilter }}</span>
+        <div class="title-left">
+          <span class="trophy-icon">🏆</span>
+          <h3>STUDENT RANKINGS (ALL RESPONSES)</h3>
+          <span class="class-tag" v-if="selectedClassFilter">Class: {{ selectedClassFilter }}</span>
+        </div>
+        <!-- Tombol Reset Rankings & Logs -->
+        <button 
+          class="btn-delete-small" 
+          @click="clearLogsData" 
+          :disabled="studentRankings.length === 0"
+        >
+          🗑️ Reset Rankings & Logs
+        </button>
       </div>
       
       <div class="table-responsive">
@@ -238,8 +248,18 @@
     <!-- 3. SECTION: INTERACTION LOG -->
     <div class="card card-section">
       <div class="log-header">
-        <h3 class="log-title">Interaction Log:</h3>
-        <span class="class-tag" v-if="selectedClassFilter">Class: {{ selectedClassFilter }}</span>
+        <div class="title-left">
+          <h3 class="log-title">Interaction Log:</h3>
+          <span class="class-tag" v-if="selectedClassFilter">Class: {{ selectedClassFilter }}</span>
+        </div>
+        <!-- Tombol Reset Log -->
+        <button 
+          class="btn-delete-small" 
+          @click="clearLogsData" 
+          :disabled="logs.length === 0"
+        >
+          🗑️ Clear Logs
+        </button>
       </div>
       <div class="log-container">
         <div v-for="(log, idx) in logs" :key="idx" class="log-bubble">
@@ -289,7 +309,7 @@ export default {
         topicTitle: '',
         questions: '',
         expectedAnswers: '',
-        imageBase64: '' // Menyimpan string base64 gambar
+        imageBase64: ''
       },
       topicsList: [],
       studentRankings: [],
@@ -322,23 +342,20 @@ export default {
     if (this.unsubscribeRankings) this.unsubscribeRankings()
   },
   methods: {
-    // Konversi file gambar ke Base64 langsung tanpa Firebase Storage
     handleFileUpload(event) {
       const file = event.target.files[0]
       if (file) {
-        // Cek ukuran file max 500KB (karena Firestore max doc 1MB)
-        // Cek ukuran file max 1MB (1024 KB)
-      if (file.size > 1024 * 1024) {
-      alert('File gambar terlalu besar! Maksimal ukuran file adalah 1MB.')
-       event.target.value = ''
+        if (file.size > 1024 * 1024) {
+          alert('File gambar terlalu besar! Maksimal ukuran file adalah 1MB.')
+          event.target.value = ''
           this.formData.imageBase64 = ''
           this.selectedFileName = ''
-        return
+          return
         }
 
         const reader = new FileReader()
         reader.onload = (e) => {
-          this.formData.imageBase64 = e.target.result // Hasil string Data URL / Base64
+          this.formData.imageBase64 = e.target.result
           this.selectedFileName = file.name
         }
         reader.readAsDataURL(file)
@@ -353,15 +370,6 @@ export default {
 
       try {
         this.isUploading = true
-        let imageUrl = ''
-
-        // 1. Upload Gambar ke Firebase Storage (jika ada file yang dipilih)
-        if (this.formData.selectedFile) {
-          const file = this.formData.selectedFile
-          const fileRef = ref(storage, `topics/${Date.now()}_${file.name}`)
-          const snapshot = await uploadBytes(fileRef, file)
-          imageUrl = await getDownloadURL(snapshot.ref)
-        }
 
         const questionsArray = this.formData.questions
           .split(';')
@@ -373,7 +381,6 @@ export default {
           .map(a => a.trim())
           .filter(a => a !== '')
 
-        // Simpan topik + gambar base64 langsung ke Firestore
         await addDoc(collection(db, 'topics'), {
           targetLevel: this.formData.targetLevel,
           title: this.formData.topicTitle,
@@ -382,11 +389,10 @@ export default {
           dueDateTime: this.formData.dueDateTime,
           questions: questionsArray,
           expectedAnswers: expectedAnswersArray,
-          imageUrl: this.formData.imageBase64 || '', // String Base64 gambar
+          imageUrl: this.formData.imageBase64 || '',
           createdAt: serverTimestamp()
         })
 
-        // Simpan/Update Kelas ke Koleksi 'levels'
         await setDoc(doc(db, 'levels', this.formData.targetLevel), {
           name: this.formData.targetLevel,
           createdAt: serverTimestamp()
@@ -394,7 +400,6 @@ export default {
 
         alert('Topic and Level successfully saved!')
 
-        // Reset Form
         this.formData.topicTitle = ''
         this.formData.questions = ''
         this.formData.expectedAnswers = ''
@@ -416,20 +421,58 @@ export default {
 
       if (confirm(`Are you sure you want to delete topic "${title}"?`)) {
         try {
-          // 1. Hapus dokumen topik dari koleksi 'topics'
           await deleteDoc(doc(db, 'topics', id))
 
-          // 2. Cek apakah masih ada topik lain yang memakai targetLevel ini
           const q = query(collection(db, 'topics'), where('targetLevel', '==', targetLevel))
           const remainingTopics = await getDocs(q)
 
-          // 3. Jika tidak ada topik tersisa di kelas ini, hapus dari koleksi 'levels'
           if (remainingTopics.empty) {
             await deleteDoc(doc(db, 'levels', targetLevel))
           }
         } catch (err) {
           console.error('Failed to delete topic & level:', err)
         }
+      }
+    },
+
+    async clearLogsData() {
+      const targetText = this.selectedClassFilter 
+        ? `kelas "${this.selectedClassFilter}"` 
+        : 'SEMUA KELAS'
+
+      if (!confirm(`Apakah Anda yakin ingin menghapus semua data ranking & log untuk ${targetText}? Data yang dihapus tidak bisa dikembalikan.`)) {
+        return
+      }
+
+      try {
+        let logsQuery
+
+        if (this.selectedClassFilter) {
+          logsQuery = query(
+            collection(db, 'logs'), 
+            where('targetLevel', '==', this.selectedClassFilter)
+          )
+        } else {
+          logsQuery = query(collection(db, 'logs'))
+        }
+
+        const snapshot = await getDocs(logsQuery)
+
+        if (snapshot.empty) {
+          alert('Tidak ada data log yang bisa dihapus.')
+          return
+        }
+
+        const deletePromises = snapshot.docs.map(document => 
+          deleteDoc(doc(db, 'logs', document.id))
+        )
+
+        await Promise.all(deletePromises)
+
+        alert(`Berhasil mereset data ranking dan log untuk ${targetText}!`)
+      } catch (error) {
+        console.error('Error clearing logs:', error)
+        alert('Gagal menghapus data log: ' + error.message)
       }
     },
 
@@ -600,6 +643,7 @@ export default {
 }
 .btn-voice-small { background-color: #e0f2fe; color: #0369a1; }
 .btn-delete-small { background-color: #fee2e2; color: #991b1b; }
+.btn-delete-small:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-speak-single { background-color: transparent; font-size: 14px; }
 
 .question-label { font-size: 12px; font-weight: 700; color: #64748b; margin: 0 0 6px 0; }
@@ -613,7 +657,13 @@ export default {
 .filter-label { font-weight: 700; font-size: 14px; color: #334155; white-space: nowrap; }
 .filter-select { max-width: 250px; background-color: white; }
 
-.leaderboard-title, .log-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.leaderboard-title, .log-header { 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+  margin-bottom: 16px; 
+}
+.title-left { display: flex; align-items: center; gap: 8px; }
 .leaderboard-title h3, .log-title { margin: 0; font-size: 16px; color: #0f172a; }
 .class-tag { font-size: 12px; font-weight: 700; background-color: #f1f5f9; padding: 2px 8px; border-radius: 4px; color: #475569; }
 
