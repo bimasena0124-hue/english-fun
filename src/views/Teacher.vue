@@ -83,7 +83,7 @@
                 />
                 <label for="file-upload" class="file-input-label">
                   <span class="btn-browse">Browse...</span>
-                  <span class="file-name">{{ selectedFileName || 'No file selected.' }}</span>
+                  <span class="file-name">{{ selectedFileName || 'No file selected (Max 500KB).' }}</span>
                 </label>
               </div>
             </div>
@@ -119,7 +119,7 @@
               @click="saveTopic"
             >
               <span class="btn-icon">+</span> 
-              {{ isUploading ? 'Uploading & Saving...' : 'Save New Topic & Level' }}
+              {{ isUploading ? 'Saving Topic...' : 'Save New Topic & Level' }}
             </button>
           </div>
         </div>
@@ -149,7 +149,7 @@
                 </div>
               </div>
 
-              <!-- Pratinjau Gambar Topik jika ada -->
+              <!-- Preview Gambar (Base64 / URL) -->
               <div v-if="topic.imageUrl" class="topic-image-preview">
                 <img :src="topic.imageUrl" alt="Topic Image Preview" />
               </div>
@@ -255,8 +255,7 @@
 </template>
 
 <script>
-// Pastikan 'storage' di-export dari file konfigurasi firebase.js kamu
-import { db, auth, storage } from '@/firebase'
+import { db, auth } from '@/firebase'
 import { 
   collection, 
   addDoc, 
@@ -290,7 +289,7 @@ export default {
         topicTitle: '',
         questions: '',
         expectedAnswers: '',
-        selectedFile: null
+        imageBase64: '' // Menyimpan string base64 gambar
       },
       topicsList: [],
       studentRankings: [],
@@ -323,11 +322,25 @@ export default {
     if (this.unsubscribeRankings) this.unsubscribeRankings()
   },
   methods: {
+    // Konversi file gambar ke Base64 langsung tanpa Firebase Storage
     handleFileUpload(event) {
       const file = event.target.files[0]
       if (file) {
-        this.formData.selectedFile = file
-        this.selectedFileName = file.name
+        // Cek ukuran file max 500KB (karena Firestore max doc 1MB)
+        if (file.size > 500 * 1024) {
+          alert('File gambar terlalu besar! Maksimal ukuran file adalah 500KB.')
+          event.target.value = ''
+          this.formData.imageBase64 = ''
+          this.selectedFileName = ''
+          return
+        }
+
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          this.formData.imageBase64 = e.target.result // Hasil string Data URL / Base64
+          this.selectedFileName = file.name
+        }
+        reader.readAsDataURL(file)
       }
     },
 
@@ -359,7 +372,7 @@ export default {
           .map(a => a.trim())
           .filter(a => a !== '')
 
-        // 2. Simpan Topik beserta imageUrl ke Firestore
+        // Simpan topik + gambar base64 langsung ke Firestore
         await addDoc(collection(db, 'topics'), {
           targetLevel: this.formData.targetLevel,
           title: this.formData.topicTitle,
@@ -368,11 +381,11 @@ export default {
           dueDateTime: this.formData.dueDateTime,
           questions: questionsArray,
           expectedAnswers: expectedAnswersArray,
-          imageUrl: imageUrl, // Menyimpan URL gambar yang sudah diunggah
+          imageUrl: this.formData.imageBase64 || '', // String Base64 gambar
           createdAt: serverTimestamp()
         })
 
-        // 3. Simpan/Update Kelas ke Koleksi 'levels'
+        // Simpan/Update Kelas ke Koleksi 'levels'
         await setDoc(doc(db, 'levels', this.formData.targetLevel), {
           name: this.formData.targetLevel,
           createdAt: serverTimestamp()
@@ -384,7 +397,7 @@ export default {
         this.formData.topicTitle = ''
         this.formData.questions = ''
         this.formData.expectedAnswers = ''
-        this.formData.selectedFile = null
+        this.formData.imageBase64 = ''
         this.selectedFileName = ''
       } catch (error) {
         console.error('Error saving topic:', error)
@@ -578,7 +591,7 @@ export default {
 .level-badge { background-color: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
 
 .topic-image-preview { margin: 10px 0; }
-.topic-image-preview img { max-width: 150px; height: auto; border-radius: 6px; border: 1px solid #e2e8f0; }
+.topic-image-preview img { max-width: 150px; max-height: 120px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e1; }
 
 .action-buttons { display: flex; gap: 6px; }
 .btn-voice-small, .btn-delete-small, .btn-speak-single {
