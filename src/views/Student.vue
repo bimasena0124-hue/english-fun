@@ -67,7 +67,7 @@
       </div>
 
       <!-- Display Image if Available -->
-      <div v-if="currentTopic.imageUrl" class="image-wrapper">
+      <div v-if="currentTopic && currentTopic.imageUrl" class="image-wrapper">
         <img :src="currentTopic.imageUrl" alt="Topic Image" class="topic-image" />
       </div>
 
@@ -86,7 +86,7 @@
 
       <!-- Current Question Box -->
       <div class="question-box">
-        <h3>Question {{ currentQuestionIndex + 1 }} of {{ currentTopic.questions.length }}:</h3>
+        <h3>Question {{ currentQuestionIndex + 1 }} of {{ currentTopic.questions ? currentTopic.questions.length : 0 }}:</h3>
         <p class="question-text">"{{ currentQuestion }}"</p>
         
         <button class="btn-replay" @click="speakQuestion(currentQuestion)">
@@ -173,7 +173,7 @@ import { db } from '@/firebase'
 import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore'
 
 export default {
-  name: 'Student',
+  name: 'StudentView',
   data() {
     return {
       studentName: '',
@@ -200,7 +200,6 @@ export default {
       if (!this.currentTopic || !this.currentTopic.questions) return ''
       return this.currentTopic.questions[this.currentQuestionIndex] || ''
     },
-    // PERBAIKAN: Mengambil data dari expectedAnswers (atau fallback ke answerKeys)
     expectedAnswer() {
       if (!this.currentTopic) return ''
       const answers = this.currentTopic.expectedAnswers || this.currentTopic.answerKeys
@@ -243,8 +242,23 @@ export default {
       const q = query(collection(db, 'topics'), orderBy('createdAt', 'desc'))
       onSnapshot(q, (snapshot) => {
         if (!snapshot.empty) {
-          this.topicsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+          // Mapping data secara eksplisit termasuk imageUrl
+          this.topicsList = snapshot.docs.map(doc => {
+            const data = doc.data()
+            return {
+              id: doc.id,
+              title: data.title || '',
+              targetLevel: data.targetLevel || '',
+              imageUrl: data.imageUrl || '',
+              aiVoice: data.aiVoice || 'en-US',
+              questions: data.questions || [],
+              expectedAnswers: data.expectedAnswers || data.answerKeys || []
+            }
+          })
           this.updateTopicSelection()
+        } else {
+          this.topicsList = []
+          this.currentTopic = null
         }
       })
     },
@@ -256,7 +270,8 @@ export default {
     onTopicChange() {
       const foundTopic = this.filteredTopics.find(t => t.id === this.selectedTopicId)
       if (foundTopic) {
-        this.currentTopic = foundTopic
+        // Menggunakan spread operator untuk memaksa reaktivitas Vue
+        this.currentTopic = { ...foundTopic }
         this.resetState()
         this.$nextTick(() => {
           if (this.expectedAnswer) {
@@ -270,8 +285,9 @@ export default {
 
     updateTopicSelection() {
       if (this.filteredTopics.length > 0) {
-        this.currentTopic = this.filteredTopics[0]
-        this.selectedTopicId = this.currentTopic.id
+        const firstTopic = this.filteredTopics[0]
+        this.selectedTopicId = firstTopic.id
+        this.currentTopic = { ...firstTopic }
         this.resetState()
         
         this.$nextTick(() => {
@@ -562,7 +578,13 @@ export default {
 }
 
 .image-wrapper { text-align: center; margin-bottom: 16px; }
-.topic-image { max-width: 100%; max-height: 250px; border-radius: 8px; object-fit: cover; }
+.topic-image { 
+  max-width: 100%; 
+  max-height: 300px; 
+  border-radius: 8px; 
+  object-fit: cover; 
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
 
 .teacher-answer-box {
   background-color: #f0fdf4;
