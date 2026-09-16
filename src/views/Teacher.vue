@@ -83,7 +83,7 @@
                 />
                 <label for="file-upload" class="file-input-label">
                   <span class="btn-browse">Browse...</span>
-                  <span class="file-name">{{ selectedFileName || 'No file selected (Max 500KB).' }}</span>
+                  <span class="file-name">{{ selectedFileName || 'No file selected (Max 1MB).' }}</span>
                 </label>
               </div>
             </div>
@@ -327,12 +327,13 @@ export default {
       const file = event.target.files[0]
       if (file) {
         // Cek ukuran file max 500KB (karena Firestore max doc 1MB)
-        if (file.size > 500 * 1024) {
-          alert('File gambar terlalu besar! Maksimal ukuran file adalah 500KB.')
-          event.target.value = ''
+        // Cek ukuran file max 1MB (1024 KB)
+      if (file.size > 1024 * 1024) {
+      alert('File gambar terlalu besar! Maksimal ukuran file adalah 1MB.')
+       event.target.value = ''
           this.formData.imageBase64 = ''
           this.selectedFileName = ''
-          return
+        return
         }
 
         const reader = new FileReader()
