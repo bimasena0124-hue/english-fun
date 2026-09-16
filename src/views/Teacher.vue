@@ -77,6 +77,7 @@
                 <input
                   type="file"
                   id="file-upload"
+                  accept="image/*"
                   @change="handleFileUpload"
                   class="file-input-hidden"
                 />
@@ -146,6 +147,11 @@
                     🗑️ Delete Topic
                   </button>
                 </div>
+              </div>
+
+              <!-- Pratinjau Gambar Topik jika ada -->
+              <div v-if="topic.imageUrl" class="topic-image-preview">
+                <img :src="topic.imageUrl" alt="Topic Image Preview" />
               </div>
 
               <div class="topic-questions">
@@ -249,7 +255,8 @@
 </template>
 
 <script>
-import { db, auth } from '@/firebase'
+// Pastikan 'storage' di-export dari file konfigurasi firebase.js kamu
+import { db, auth, storage } from '@/firebase'
 import { 
   collection, 
   addDoc, 
@@ -263,6 +270,7 @@ import {
   setDoc, 
   getDocs 
 } from 'firebase/firestore'
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { signOut } from 'firebase/auth'
 
 export default {
@@ -331,6 +339,15 @@ export default {
 
       try {
         this.isUploading = true
+        let imageUrl = ''
+
+        // 1. Upload Gambar ke Firebase Storage (jika ada file yang dipilih)
+        if (this.formData.selectedFile) {
+          const file = this.formData.selectedFile
+          const fileRef = ref(storage, `topics/${Date.now()}_${file.name}`)
+          const snapshot = await uploadBytes(fileRef, file)
+          imageUrl = await getDownloadURL(snapshot.ref)
+        }
 
         const questionsArray = this.formData.questions
           .split(';')
@@ -342,7 +359,7 @@ export default {
           .map(a => a.trim())
           .filter(a => a !== '')
 
-        // 1. Simpan Topik ke Firestore
+        // 2. Simpan Topik beserta imageUrl ke Firestore
         await addDoc(collection(db, 'topics'), {
           targetLevel: this.formData.targetLevel,
           title: this.formData.topicTitle,
@@ -351,10 +368,11 @@ export default {
           dueDateTime: this.formData.dueDateTime,
           questions: questionsArray,
           expectedAnswers: expectedAnswersArray,
+          imageUrl: imageUrl, // Menyimpan URL gambar yang sudah diunggah
           createdAt: serverTimestamp()
         })
 
-        // 2. Simpan/Update Kelas ke Koleksi 'levels'
+        // 3. Simpan/Update Kelas ke Koleksi 'levels'
         await setDoc(doc(db, 'levels', this.formData.targetLevel), {
           name: this.formData.targetLevel,
           createdAt: serverTimestamp()
@@ -362,6 +380,7 @@ export default {
 
         alert('Topic and Level successfully saved!')
 
+        // Reset Form
         this.formData.topicTitle = ''
         this.formData.questions = ''
         this.formData.expectedAnswers = ''
@@ -375,7 +394,6 @@ export default {
       }
     },
 
-    // PERBAIKAN: Menghapus dokumen 'topics' sekaligus cek & hapus 'levels' jika topik sudah habis
     async deleteTopic(id, title) {
       const topicToDelete = this.topicsList.find(t => t.id === id)
       if (!topicToDelete) return
@@ -537,7 +555,7 @@ export default {
   background-color: #e2e8f0; padding: 0 12px; height: 100%;
   display: flex; align-items: center; font-size: 13px; font-weight: 600; color: #334155;
 }
-.file-name { padding: 0 12px; font-size: 13px; color: #64748b; }
+.file-name { padding: 0 12px; font-size: 13px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .divider { height: 1px; background-color: #e2e8f0; margin: 20px 0; }
 
@@ -558,6 +576,9 @@ export default {
 .topic-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .topic-badge { font-weight: 700; color: #0077b6; }
 .level-badge { background-color: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+
+.topic-image-preview { margin: 10px 0; }
+.topic-image-preview img { max-width: 150px; height: auto; border-radius: 6px; border: 1px solid #e2e8f0; }
 
 .action-buttons { display: flex; gap: 6px; }
 .btn-voice-small, .btn-delete-small, .btn-speak-single {
