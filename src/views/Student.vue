@@ -193,8 +193,16 @@ export default {
     }
   },
   computed: {
+    // Filter dibuat case-insensitive & kebal spasi tambahan
     filteredTopics() {
-      return this.topicsList.filter(t => t.targetLevel === this.selectedLevel)
+      if (!this.selectedLevel) return this.topicsList
+
+      return this.topicsList.filter(t => {
+        if (!t.targetLevel) return false
+        const studentLevel = String(this.selectedLevel).trim().toLowerCase()
+        const dbLevel = String(t.targetLevel).trim().toLowerCase()
+        return dbLevel === studentLevel
+      })
     },
     currentQuestion() {
       if (!this.currentTopic || !this.currentTopic.questions) return ''
@@ -234,21 +242,24 @@ export default {
           if (!this.selectedLevel && this.availableLevels.length > 0) {
             this.selectedLevel = this.availableLevels[0].name
           }
+          this.updateTopicSelection()
         }
+      }, (err) => {
+        console.error('Error fetching levels:', err)
       })
     },
 
     fetchTopics() {
-      const q = query(collection(db, 'topics'), orderBy('createdAt', 'desc'))
+      // Menghapus orderBy('createdAt') sementara agar dokumen yang tidak memiliki createdAt tetap ditarik
+      const q = query(collection(db, 'topics'))
       onSnapshot(q, (snapshot) => {
         if (!snapshot.empty) {
-          // Mapping data secara eksplisit termasuk imageUrl
           this.topicsList = snapshot.docs.map(doc => {
             const data = doc.data()
             return {
               id: doc.id,
               title: data.title || '',
-              targetLevel: data.targetLevel || '',
+              targetLevel: data.targetLevel || data.level || '',
               imageUrl: data.imageUrl || '',
               aiVoice: data.aiVoice || 'en-US',
               questions: data.questions || [],
@@ -260,6 +271,8 @@ export default {
           this.topicsList = []
           this.currentTopic = null
         }
+      }, (err) => {
+        console.error('Error fetching topics:', err)
       })
     },
 
@@ -270,7 +283,6 @@ export default {
     onTopicChange() {
       const foundTopic = this.filteredTopics.find(t => t.id === this.selectedTopicId)
       if (foundTopic) {
-        // Menggunakan spread operator untuk memaksa reaktivitas Vue
         this.currentTopic = { ...foundTopic }
         this.resetState()
         this.$nextTick(() => {
@@ -297,6 +309,10 @@ export default {
             this.speakQuestion(this.currentQuestion)
           }
         })
+      } else if (this.topicsList.length > 0 && !this.selectedLevel) {
+        // Fallback jika selectedLevel belum terisi, setel otomatis ke level milik topik pertama
+        this.selectedLevel = this.topicsList[0].targetLevel
+        this.updateTopicSelection()
       } else {
         this.currentTopic = null
         this.selectedTopicId = ''
