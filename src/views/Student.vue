@@ -193,13 +193,14 @@ export default {
     }
   },
   computed: {
-    // Filter dibuat case-insensitive & kebal spasi tambahan
+    // Filter topik berdasarkan Class yang dipilih secara toleran (case-insensitive & trim)
     filteredTopics() {
       if (!this.selectedLevel) return this.topicsList
 
+      const studentLevel = String(this.selectedLevel).trim().toLowerCase()
+
       return this.topicsList.filter(t => {
         if (!t.targetLevel) return false
-        const studentLevel = String(this.selectedLevel).trim().toLowerCase()
         const dbLevel = String(t.targetLevel).trim().toLowerCase()
         return dbLevel === studentLevel
       })
@@ -238,7 +239,17 @@ export default {
       const q = query(collection(db, 'levels'), orderBy('createdAt', 'asc'))
       onSnapshot(q, (snapshot) => {
         if (!snapshot.empty) {
-          this.availableLevels = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+          this.availableLevels = snapshot.docs.map(doc => {
+            const data = doc.data()
+            // Ekstrak nama level: prioritas dari field 'name', jika kosong gunakan Document ID (doc.id)
+            const levelName = data.name || data.targetLevel || doc.id
+            return {
+              id: doc.id,
+              name: String(levelName).trim()
+            }
+          })
+
+          // Jika selectedLevel belum ada, otomatis pilih indeks pertama
           if (!this.selectedLevel && this.availableLevels.length > 0) {
             this.selectedLevel = this.availableLevels[0].name
           }
@@ -250,7 +261,6 @@ export default {
     },
 
     fetchTopics() {
-      // Menghapus orderBy('createdAt') sementara agar dokumen yang tidak memiliki createdAt tetap ditarik
       const q = query(collection(db, 'topics'))
       onSnapshot(q, (snapshot) => {
         if (!snapshot.empty) {
@@ -259,13 +269,24 @@ export default {
             return {
               id: doc.id,
               title: data.title || '',
-              targetLevel: data.targetLevel || data.level || '',
+              // Membaca field targetLevel/targetlevel/level di Firestore
+              targetLevel: String(data.targetLevel || data.targetlevel || data.level || '').trim(),
               imageUrl: data.imageUrl || '',
               aiVoice: data.aiVoice || 'en-US',
               questions: data.questions || [],
               expectedAnswers: data.expectedAnswers || data.answerKeys || []
             }
           })
+          
+          // Fallback: Jika koleksi 'levels' kosong, ambil daftar level unik dari koleksi 'topics'
+          if (this.availableLevels.length === 0) {
+            const uniqueLevels = [...new Set(this.topicsList.map(t => t.targetLevel).filter(Boolean))]
+            this.availableLevels = uniqueLevels.map(lvl => ({ id: lvl, name: lvl }))
+            if (!this.selectedLevel && uniqueLevels.length > 0) {
+              this.selectedLevel = uniqueLevels[0]
+            }
+          }
+
           this.updateTopicSelection()
         } else {
           this.topicsList = []
@@ -286,36 +307,33 @@ export default {
         this.currentTopic = { ...foundTopic }
         this.resetState()
         this.$nextTick(() => {
-          if (this.expectedAnswer) {
-            this.speakQuestion(this.expectedAnswer)
-          } else if (this.currentQuestion) {
-            this.speakQuestion(this.currentQuestion)
-          }
+          this.autoPlayAudio()
         })
       }
     },
 
     updateTopicSelection() {
       if (this.filteredTopics.length > 0) {
+        // Otomatis pilih topik pertama yang sesuai dengan Class terpilih
         const firstTopic = this.filteredTopics[0]
         this.selectedTopicId = firstTopic.id
         this.currentTopic = { ...firstTopic }
         this.resetState()
         
         this.$nextTick(() => {
-          if (this.expectedAnswer) {
-            this.speakQuestion(this.expectedAnswer)
-          } else if (this.currentQuestion) {
-            this.speakQuestion(this.currentQuestion)
-          }
+          this.autoPlayAudio()
         })
-      } else if (this.topicsList.length > 0 && !this.selectedLevel) {
-        // Fallback jika selectedLevel belum terisi, setel otomatis ke level milik topik pertama
-        this.selectedLevel = this.topicsList[0].targetLevel
-        this.updateTopicSelection()
       } else {
         this.currentTopic = null
         this.selectedTopicId = ''
+      }
+    },
+
+    autoPlayAudio() {
+      if (this.expectedAnswer) {
+        this.speakQuestion(this.expectedAnswer)
+      } else if (this.currentQuestion) {
+        this.speakQuestion(this.currentQuestion)
       }
     },
 
@@ -346,9 +364,7 @@ export default {
         }
 
         this.recognition.onerror = (event) => {
-          if (event.error === 'no-speech') {
-            console.warn('Tidak ada suara terdeteksi.')
-          } else {
+          if (event.error !== 'no-speech') {
             console.error('Speech recognition error:', event.error)
           }
           this.isListening = false
@@ -492,11 +508,7 @@ export default {
         this.spokenText = ''
         this.evaluationResult = null
       }
-      if (this.expectedAnswer) {
-        this.speakQuestion(this.expectedAnswer)
-      } else {
-        this.speakQuestion(this.currentQuestion)
-      }
+      this.autoPlayAudio()
     },
 
     finishSession() {
@@ -505,11 +517,7 @@ export default {
 
     restartPractice() {
       this.resetState()
-      if (this.expectedAnswer) {
-        this.speakQuestion(this.expectedAnswer)
-      } else if (this.currentQuestion) {
-        this.speakQuestion(this.currentQuestion)
-      }
+      this.autoPlayAudio()
     },
 
     resetState() {
