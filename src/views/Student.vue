@@ -260,6 +260,31 @@ export default {
       })
     },
 
+    async finishSession() {
+    this.isFinished = true
+
+    // Hitung rata-rata waktu respon dari log yang tersimpan
+    const logs = Object.values(this.answersLog)
+    const totalDuration = logs.reduce((acc, curr) => acc + (curr.duration || 0), 0)
+    const avgDuration = logs.length > 0 ? parseFloat((totalDuration / logs.length).toFixed(1)) : 0
+
+    // Simpan ke koleksi 'rankings' HANYA saat siswa klik Finish
+    try {
+      await addDoc(collection(db, 'rankings'), {
+        studentName: this.studentName,
+        targetLevel: this.selectedLevel,
+        topic: this.currentTopic ? this.currentTopic.title : '-',
+        accuracy: this.averagePronunciationScore, // Nilai rata-rata akurasi (0-100)
+        avgResponseTime: avgDuration,             // Rata-rata durasi (detik)
+        totalQuestions: logs.length,
+        createdAt: serverTimestamp()
+      })
+      console.log('Data ranking berhasil dikirim!')
+    } catch (error) {
+      console.error('Gagal menyimpan data ranking:', error)
+    }
+  },
+
     fetchTopics() {
       const q = query(collection(db, 'topics'))
       onSnapshot(q, (snapshot) => {

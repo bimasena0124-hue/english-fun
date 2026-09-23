@@ -71,71 +71,54 @@
 </template>
 
 <script>
+// Di RankingView.vue
 import { db } from '@/firebase'
-import { collection, query, orderBy, where, onSnapshot } from 'firebase/firestore'
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore'
 
 export default {
   name: 'RankingView',
   data() {
     return {
-      selectedClassFilter: '',
-      availableLevels: [],
       studentRankings: [],
-      unsubscribeRankings: null,
-      unsubscribeLevels: null
+      selectedClassFilter: '',
+      unsubscribeRankings: null
     }
-  },
-  mounted() {
-    // 1. Fetch Daftar Kelas / Levels untuk Dropdown Filter
-    const qLevels = query(collection(db, 'levels'), orderBy('createdAt', 'asc'))
-    this.unsubscribeLevels = onSnapshot(qLevels, (snapshot) => {
-      this.availableLevels = snapshot.docs.map(doc => doc.data().name || doc.id)
-    })
-
-    // 2. Fetch Data Ranking
-    this.fetchRankings()
-  },
-  unmounted() {
-    if (this.unsubscribeRankings) this.unsubscribeRankings()
-    if (this.unsubscribeLevels) this.unsubscribeLevels()
   },
   methods: {
     fetchRankings() {
       if (this.unsubscribeRankings) this.unsubscribeRankings()
 
-      let rankingsQuery
+      let q
 
-      // Query real-time berdasarkan filter kelas
+      // Filter berdasarkan kelas jika ada yang dipilih
       if (this.selectedClassFilter) {
-        rankingsQuery = query(
-          collection(db, 'rankings'), // Atau gunakan 'logs' sesuai koleksi milikmu
+        q = query(
+          collection(db, 'rankings'),
           where('targetLevel', '==', this.selectedClassFilter),
-          orderBy('accuracy', 'desc'),
-          orderBy('avgResponseTime', 'asc')
+          orderBy('accuracy', 'desc')
         )
       } else {
-        rankingsQuery = query(
+        q = query(
           collection(db, 'rankings'),
-          orderBy('accuracy', 'desc'),
-          orderBy('avgResponseTime', 'asc')
+          orderBy('accuracy', 'desc')
         )
       }
 
-      this.unsubscribeRankings = onSnapshot(rankingsQuery, (snapshot) => {
+      this.unsubscribeRankings = onSnapshot(q, (snapshot) => {
         this.studentRankings = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }))
       }, (error) => {
-        console.error('Error fetching rankings:', error)
+        console.error('Error membaca data ranking:', error)
       })
-    },
-
-    getScoreClass(score) {
-      if (score >= 85) return 'badge-success'
-      if (score >= 70) return 'badge-warning'
-      return 'badge-danger'
     }
+  },
+  mounted() {
+    this.fetchRankings()
+  },
+  beforeUnmount() {
+    if (this.unsubscribeRankings) this.unsubscribeRankings()
   }
 }
 </script>
