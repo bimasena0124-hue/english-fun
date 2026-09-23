@@ -335,11 +335,12 @@ export default {
       }
     },
 
-    initSpeechRecognition() {
+   initSpeechRecognition() {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
       if (SpeechRecognition) {
         this.recognition = new SpeechRecognition()
-        this.recognition.continuous = true
+        // Diubah ke false agar browser langsung menyelesaikan transkripsi saat siswa selesai bicara/stop
+        this.recognition.continuous = false 
         this.recognition.interimResults = true
         this.recognition.lang = 'en-US'
 
@@ -358,9 +359,10 @@ export default {
           this.isListening = false
         }
 
+        // PERBAIKAN: Selalu jalankan evaluasi & simpan saat sesi perekaman berakhir
         this.recognition.onend = () => {
-          if (this.isListening) {
-            this.isListening = false
+          this.isListening = false
+          if (this.spokenText.trim()) {
             this.evaluateAndSaveAnswer()
           }
         }
@@ -374,9 +376,8 @@ export default {
       }
 
       if (this.isListening) {
+        // Hentikan perekaman (event onend di atas akan otomatis terpicu untuk menyimpan data)
         this.recognition.stop()
-        this.isListening = false
-        this.evaluateAndSaveAnswer()
       } else {
         this.spokenText = ''
         this.evaluationResult = null
