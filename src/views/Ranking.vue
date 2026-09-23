@@ -50,18 +50,20 @@
                 <span v-else-if="index === 2">🥉 3</span>
                 <span v-else>{{ index + 1 }}</span>
               </td>
-              <td><strong>{{ item.studentName || item.nama }}</strong></td>
-              <td><span class="level-badge">{{ item.targetLevel }}</span></td>
+              <td><strong>{{ item.studentName || item.nama || 'Anonymous' }}</strong></td>
+              <td><span class="level-badge">{{ item.targetLevel || item.level || '-' }}</span></td>
               <td>{{ item.topic || '-' }}</td>
               <td class="text-center">
-                <span :class="['score-badge', getScoreClass(item.accuracy ?? item.spellingScore ?? 0)]">
-                  {{ item.accuracy ?? item.spellingScore ?? 0 }}%
+                <span :class="['score-badge', getScoreClass(getScore(item))]">
+                  {{ getScore(item) }}%
                 </span>
               </td>
               <td class="text-center">⚡ {{ formatResponseTime(item.avgResponseTime ?? item.responseTime) }}</td>
             </tr>
             <tr v-if="studentRankings.length === 0">
-              <td colspan="6" class="empty-table">Belum ada data ranking untuk kelas ini.</td>
+              <td colspan="6" class="empty-table">
+                Belum ada data ranking untuk {{ selectedClassFilter ? `kelas ${selectedClassFilter}` : 'semua kelas' }}.
+              </td>
             </tr>
           </tbody>
         </table>
@@ -72,7 +74,7 @@
 
 <script>
 import { db } from '@/firebase'
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore'
+import { collection, query, onSnapshot } from 'firebase/firestore'
 
 export default {
   name: 'RankingView',
@@ -92,9 +94,8 @@ export default {
     if (this.unsubscribeRankings) this.unsubscribeRankings()
   },
   methods: {
-    // Ambil daftar kelas dari Firestore untuk populate dropdown filter
     fetchLevels() {
-      const q = query(collection(db, 'levels'), orderBy('createdAt', 'asc'))
+      const q = query(collection(db, 'levels'))
       onSnapshot(q, (snapshot) => {
         if (!snapshot.empty) {
           this.availableLevels = snapshot.docs.map(doc => {
@@ -102,11 +103,9 @@ export default {
             return String(data.name || data.targetLevel || doc.id).trim()
           })
         } else {
-          // Fallback: Ambil dari koleksi topics jika koleksi levels belum diisi
           this.fetchLevelsFromTopics()
         }
-      }, (error) => {
-        console.error('Error membaca data levels:', error)
+      }, () => {
         this.fetchLevelsFromTopics()
       })
     },
@@ -126,30 +125,33 @@ export default {
       })
     },
 
-    // Ambil data ranking real-time dari Firestore
     fetchRankings() {
       if (this.unsubscribeRankings) this.unsubscribeRankings()
 
-      let q
-      if (this.selectedClassFilter) {
-        q = query(
-          collection(db, 'rankings'),
-          where('targetLevel', '==', this.selectedClassFilter)
-        )
-      } else {
-        q = query(collection(db, 'rankings'))
-      }
+      // Ambil seluruh dokumen dari koleksi 'rankings'
+      const q = query(collection(db, 'rankings'))
 
       this.unsubscribeRankings = onSnapshot(q, (snapshot) => {
-        const rawList = snapshot.docs.map(doc => ({
+        let list = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }))
 
-        // Sort secara manual: Accuracy tertinggi (descending), jika sama waktu respon tercepat (ascending)
-        this.studentRankings = rawList.sort((a, b) => {
-          const scoreA = Number(a.accuracy ?? a.spellingScore ?? 0)
-          const scoreB = Number(b.accuracy ?? b.spellingScore ?? 0)
+        // Filter kelas secara lokal (mencegah masalah penulisan kapital/kecil)
+        if (this.selectedClassFilter) {
+          const targetFilter = this.selectedClassFilter.trim().toLowerCase()
+          list = list.filter(item => {
+            const itemLevel = String(item.targetLevel || item.level || '').trim().toLowerCase()
+            return itemLevel === targetFilter
+          })
+        }
+
+        // Urutkan secara lokal:
+        // 1. Accuracy/Score tertinggi
+        // 2. Jika sama, Response Time tercepat
+        this.studentRankings = list.sort((a, b) => {
+          const scoreA = this.getScore(a)
+          const scoreB = this.getScore(b)
 
           if (scoreB !== scoreA) {
             return scoreB - scoreA
@@ -162,6 +164,10 @@ export default {
       }, (error) => {
         console.error('Error membaca data ranking:', error)
       })
+    },
+
+    getScore(item) {
+      return Number(item.accuracy ?? item.spellingScore ?? item.score ?? 0)
     },
 
     getScoreClass(score) {
@@ -212,9 +218,7 @@ export default {
   font-weight: 600;
   transition: background-color 0.2s;
 }
-.btn-back:hover {
-  background-color: #475569;
-}
+.btn-back:hover { background-color: #475569; }
 
 .card {
   background-color: #ffffff;
