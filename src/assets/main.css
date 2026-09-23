@@ -1,16 +1,15 @@
 /* ==========================================
-   RESET & MOBILE-FIRST BASE STYLES
+   RESET & CSS VARIABLES
    ========================================== */
 :root {
   --primary-color: #4f46e5;
   --primary-hover: #4338ca;
   --bg-color: #f8fafc;
-  /* Diberi transparansi 90% agar background di belakangnya samar terlihat */
   --card-bg: rgba(255, 255, 255, 0.9);
   --text-main: #0f172a;
   --text-muted: #64748b;
   --border-color: #e2e8f0;
-  --radius: 16px; /* Ditingkatkan sedikit agar sudut lebih membulat & ramah anak */
+  --radius: 16px;
 }
 
 * {
@@ -19,6 +18,16 @@
   padding: 0;
 }
 
+/* Mencegah gambar & elemen media keluar dari layar HP */
+img, video, canvas, svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ==========================================
+   GLOBAL BODY & BACKGROUND
+   ========================================== */
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background-color: var(--bg-color);
@@ -26,18 +35,17 @@ body {
   line-height: 1.5;
   -webkit-tap-highlight-color: transparent;
 
-  /* ==========================================
-     BACKGROUND GAMBAR RESPONSIF
-     ========================================== */
-  background-image: url('https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=2000&q=80'); /* Jalur gambar di folder assets */
-  background-size: cover;          /* Gambar memenuhi layar tanpa terdistorsi */
-  background-position: center;     /* Mengunci fokus ke tengah gambar */
-  background-repeat: no-repeat;    /* Mencegah gambar berulang */
-  background-attachment: fixed;    /* Background diam saat halaman di-scroll */
+  /* Background setup */
+  background-image: url('https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=2000&q=80');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  
+  /* Di-set ke 'scroll' untuk performa scroll HP yang lebih lancar */
+  background-attachment: scroll; 
   min-height: 100vh;
 }
 
-/* Container utama untuk mobile */
 .container {
   width: 100%;
   padding: 16px;
@@ -45,24 +53,54 @@ body {
 }
 
 /* ==========================================
-   FORM LOGIN & REGISTER (MOBILE OPTIMIZED)
+   CARD & LAYOUT (MOBILE 1-KOLOM)
    ========================================== */
-.auth-card {
+.card, .auth-card {
   background: var(--card-bg);
-  backdrop-filter: blur(8px); /* Efek blur kaca yang modern */
-  padding: 24px 20px;
+  backdrop-filter: blur(8px);
+  padding: 16px;
   border-radius: var(--radius);
   border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   width: 100%;
-  max-width: 400px;
-  margin: 40px auto;
+}
+
+.auth-card {
+  margin: 20px auto;
 }
 
 .auth-card h2 {
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   margin-bottom: 20px;
   text-align: center;
+}
+
+.dashboard-header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.dashboard-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 100%; /* Paksa selalu 1 kolom */
+  gap: 16px;
+}
+
+/* ==========================================
+   FORMS, INPUTS & BUTTONS (TOUCH FRIENDLY)
+   ========================================== */
+.form-row {
+  display: flex;
+  flex-direction: column; /* Memaksa row menjadi tumpukan vertikal */
+  gap: 12px;
 }
 
 .form-group {
@@ -77,24 +115,34 @@ body {
   color: var(--text-muted);
 }
 
-/* Touch target ramah jari di HP (minimal tinggi 44px-48px) */
+/* Standar Tinggi Minimal 48px agar gampang disentuh jari */
 .form-input,
-.btn {
+.btn,
+select.form-input,
+select.form-select,
+input[type="datetime-local"].form-input {
   width: 100%;
-  min-height: 48px;
+  min-height: 48px; 
   padding: 12px 16px;
   font-size: 1rem;
   border-radius: 10px;
-}
-
-.form-input {
   border: 1px solid var(--border-color);
   background-color: rgba(255, 255, 255, 0.95);
+  color: var(--text-main);
   outline: none;
   transition: border-color 0.2s;
 }
 
-.form-input:focus {
+/* Menghapus gaya dropdown bawaan OS */
+select.form-input,
+select.form-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+.form-input:focus,
+select:focus {
   border-color: var(--primary-color);
   box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
 }
@@ -117,81 +165,54 @@ body {
 }
 
 /* ==========================================
-   DASHBOARD TEACHER & STUDENT (MOBILE OPTIMIZED)
+   TABEL RESPONSIF (SCROLL MENDATAR)
    ========================================== */
-.dashboard-header {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.dashboard-title {
-  font-size: 1.35rem;
-  font-weight: 700;
-}
-
-/* Grid berubah jadi 1 kolom di HP */
-.dashboard-grid {
-  display: grid;
-  grid-template-columns: 100%;
-  gap: 16px;
-}
-
-.card {
-  background: var(--card-bg);
-  backdrop-filter: blur(8px); /* Efek blur halus agar konten menonjol dari background */
-  padding: 16px;
-  border-radius: var(--radius);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-}
-
-/* Tabel Responsif: scroll horizontal jika kolom terlalu lebar */
 .table-responsive {
   width: 100%;
   overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  -webkit-overflow-scrolling: touch; /* Scroll mulus di iOS */
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
-  white-space: nowrap;
+  white-space: nowrap; /* Mencegah teks hancur ke bawah */
 }
 
 th, td {
-  padding: 12px;
+  padding: 10px;
   text-align: left;
   border-bottom: 1px solid var(--border-color);
   font-size: 0.875rem;
 }
 
 /* ==========================================
-   DESKTOP & MOBILE MEDIA QUERIES
+   UTILITY CLASSES & ANIMASI
    ========================================== */
+.mt-10 { margin-top: 10px; }
+.mt-15 { margin-top: 15px; }
+.mt-20 { margin-top: 20px; }
+.text-center { text-align: center; }
 
-/* Optimasi khusus HP / Mobile Screen */
-@media (max-width: 767px) {
-  body {
-    background-attachment: scroll; /* Mengoptimalkan performa scroll pada browser HP */
-  }
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.badge-success { background-color: #dcfce7; color: #15803d; }
+.badge-warning { background-color: #fef9c3; color: #a16207; }
+.badge-danger { background-color: #fee2e2; color: #b91c1c; }
+
+@keyframes pulse-red {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.98); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
-/* Tampilan Layar Lebar / Desktop */
-@media (min-width: 768px) {
-  .container {
-    padding: 32px;
-    max-width: 1200px;
-  }
-
-  .dashboard-header {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .dashboard-grid {
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  }
+.is-recording {
+  background-color: #ef4444 !important;
+  color: #ffffff !important;
+  animation: pulse-red 1.2s infinite ease-in-out;
 }

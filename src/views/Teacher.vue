@@ -3,6 +3,9 @@
     <!-- Tombol Logout & Header Status -->
     <div class="top-bar">
       <span class="auth-status">🟢 Logged in as Teacher</span>
+      <button @click="$router.push('/ranking')" class="btn-ranking">
+          🏆 View Student Rankings
+        </button> 
       <button @click="logout" class="btn-logout">🚪 Logout</button>
     </div>
 
@@ -192,58 +195,6 @@
       </div>
     </div>
 
-    <!-- 2. SECTION: STUDENT RANKINGS -->
-    <div class="card card-section">
-      <div class="leaderboard-title">
-        <div class="title-left">
-          <span class="trophy-icon">🏆</span>
-          <h3>STUDENT RANKINGS (ALL RESPONSES)</h3>
-          <span class="class-tag" v-if="selectedClassFilter">Class: {{ selectedClassFilter }}</span>
-        </div>
-        <!-- Tombol Reset Rankings & Logs -->
-        <button 
-          class="btn-delete-small" 
-          @click="clearLogsData" 
-          :disabled="studentRankings.length === 0"
-        >
-          🗑️ Reset Rankings & Logs
-        </button>
-      </div>
-      
-      <div class="table-responsive">
-        <table class="leaderboard-table">
-          <thead>
-            <tr>
-              <th>Rank</th>
-              <th>Student Name</th>
-              <th>Class / Level</th>
-              <th>Topic</th>
-              <th>Response Time</th>
-              <th>Spoken Answer</th>
-              <th>Fluency & Evaluation</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(item, index) in studentRankings" :key="index">
-              <td>{{ index + 1 }}</td>
-              <td>{{ item.studentName }}</td>
-              <td><span class="level-badge">{{ item.targetLevel }}</span></td>
-              <td>{{ item.topic }}</td>
-              <td>{{ item.responseTime }}</td>
-              <td>{{ item.spokenAnswer }}</td>
-              <td>
-                <span :class="['score-badge', getScoreClass(item.spellingScore)]">
-                  {{ item.spellingScore }}% Accuracy
-                </span>
-              </td>
-            </tr>
-            <tr v-if="studentRankings.length === 0">
-              <td colspan="7" class="empty-table">No data available for this class.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
 
     <!-- 3. SECTION: INTERACTION LOG -->
     <div class="card card-section">
@@ -312,10 +263,8 @@ export default {
         imageBase64: ''
       },
       topicsList: [],
-      studentRankings: [],
       logs: [],
       unsubscribeLogs: null,
-      unsubscribeRankings: null
     }
   },
   mounted() {
@@ -339,7 +288,6 @@ export default {
   },
   unmounted() {
     if (this.unsubscribeLogs) this.unsubscribeLogs()
-    if (this.unsubscribeRankings) this.unsubscribeRankings()
   },
   methods: {
     handleFileUpload(event) {
@@ -493,10 +441,8 @@ export default {
 
     setupRealtimeListeners() {
       if (this.unsubscribeLogs) this.unsubscribeLogs()
-      if (this.unsubscribeRankings) this.unsubscribeRankings()
 
       let logsQuery
-      let rankingsQuery
 
       if (this.selectedClassFilter) {
         logsQuery = query(
@@ -504,30 +450,16 @@ export default {
           where('targetLevel', '==', this.selectedClassFilter),
           orderBy('createdAt', 'desc')
         )
-        rankingsQuery = query(
-          collection(db, 'logs'),
-          where('targetLevel', '==', this.selectedClassFilter),
-          orderBy('responseTimeNum', 'asc')
-        )
       } else {
         logsQuery = query(collection(db, 'logs'), orderBy('createdAt', 'desc'))
-        rankingsQuery = query(collection(db, 'logs'), orderBy('responseTimeNum', 'asc'))
       }
 
       this.unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
         this.logs = snapshot.docs.map(doc => doc.data())
       })
 
-      this.unsubscribeRankings = onSnapshot(rankingsQuery, (snapshot) => {
-        this.studentRankings = snapshot.docs.map(doc => doc.data())
-      })
     },
 
-    getScoreClass(score) {
-      if (score >= 85) return 'badge-success'
-      if (score >= 70) return 'badge-warning'
-      return 'badge-danger'
-    },
 
     async logout() {
       try {
@@ -542,6 +474,27 @@ export default {
 </script>
 
 <style scoped>
+
+.top-bar-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.btn-ranking {
+  background-color: #f59e0b;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 13px;
+}
+
+.btn-ranking:hover {
+  background-color: #d97706;
+}
 .teacher-container {
   width: 100%;
   max-width: 900px;
@@ -656,27 +609,6 @@ export default {
 .filter-group { display: flex; align-items: center; gap: 12px; }
 .filter-label { font-weight: 700; font-size: 14px; color: #334155; white-space: nowrap; }
 .filter-select { max-width: 250px; background-color: white; }
-
-.leaderboard-title, .log-header { 
-  display: flex; 
-  justify-content: space-between; 
-  align-items: center; 
-  margin-bottom: 16px; 
-}
-.title-left { display: flex; align-items: center; gap: 8px; }
-.leaderboard-title h3, .log-title { margin: 0; font-size: 16px; color: #0f172a; }
-.class-tag { font-size: 12px; font-weight: 700; background-color: #f1f5f9; padding: 2px 8px; border-radius: 4px; color: #475569; }
-
-.table-responsive { overflow-x: auto; }
-.leaderboard-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.leaderboard-table th { background-color: #f8fafc; text-align: left; padding: 10px; color: #475569; border-bottom: 2px solid #e2e8f0; }
-.leaderboard-table td { padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155; }
-.empty-table { text-align: center; color: #94a3b8; padding: 20px !important; }
-
-.score-badge { padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 11px; }
-.badge-success { background-color: #dcfce7; color: #15803d; }
-.badge-warning { background-color: #fef9c3; color: #a16207; }
-.badge-danger { background-color: #fee2e2; color: #b91c1c; }
 
 .log-container { background-color: #0f172a; border-radius: 8px; padding: 16px; max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
 .log-bubble { font-family: monospace; font-size: 12px; color: #38bdf8; line-height: 1.4; }
