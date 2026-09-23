@@ -323,13 +323,7 @@ export default {
       }
     },
 
-    autoPlayAudio() {
-      if (this.expectedAnswer) {
-        this.speakQuestion(this.expectedAnswer)
-      } else if (this.currentQuestion) {
-        this.speakQuestion(this.currentQuestion)
-      }
-    },
+   
 
     speakQuestion(text) {
       if ('speechSynthesis' in window && text) {
