@@ -71,7 +71,6 @@
 </template>
 
 <script>
-// Di RankingView.vue
 import { db } from '@/firebase'
 import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore'
 
