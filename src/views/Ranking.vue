@@ -54,11 +54,11 @@
               <td><span class="level-badge">{{ item.targetLevel }}</span></td>
               <td>{{ item.topic || '-' }}</td>
               <td class="text-center">
-                <span :class="['score-badge', getScoreClass(item.spellingScore || item.accuracy)]">
-                  {{ item.spellingScore || item.accuracy }}%
+                <span :class="['score-badge', getScoreClass(item.accuracy ?? item.spellingScore ?? 0)]">
+                  {{ item.accuracy ?? item.spellingScore ?? 0 }}%
                 </span>
               </td>
-              <td class="text-center">⚡ {{ item.responseTime || item.avgResponseTime }}s</td>
+              <td class="text-center">⚡ {{ formatResponseTime(item.avgResponseTime ?? item.responseTime) }}</td>
             </tr>
             <tr v-if="studentRankings.length === 0">
               <td colspan="6" class="empty-table">Belum ada data ranking untuk kelas ini.</td>
@@ -79,45 +79,102 @@ export default {
   data() {
     return {
       studentRankings: [],
+      availableLevels: [],
       selectedClassFilter: '',
       unsubscribeRankings: null
     }
   },
-  methods: {
-    fetchRankings() {
-      if (this.unsubscribeRankings) this.unsubscribeRankings()
-
-      let q
-
-      // Filter berdasarkan kelas jika ada yang dipilih
-      if (this.selectedClassFilter) {
-        q = query(
-          collection(db, 'rankings'),
-          where('targetLevel', '==', this.selectedClassFilter),
-          orderBy('accuracy', 'desc')
-        )
-      } else {
-        q = query(
-          collection(db, 'rankings'),
-          orderBy('accuracy', 'desc')
-        )
-      }
-
-      this.unsubscribeRankings = onSnapshot(q, (snapshot) => {
-        this.studentRankings = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }))
-      }, (error) => {
-        console.error('Error membaca data ranking:', error)
-      })
-    }
-  },
   mounted() {
+    this.fetchLevels()
     this.fetchRankings()
   },
   beforeUnmount() {
     if (this.unsubscribeRankings) this.unsubscribeRankings()
+  },
+  methods: {
+    // Ambil daftar kelas dari Firestore untuk populate dropdown filter
+    fetchLevels() {
+      const q = query(collection(db, 'levels'), orderBy('createdAt', 'asc'))
+      onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          this.availableLevels = snapshot.docs.map(doc => {
+            const data = doc.data()
+            return String(data.name || data.targetLevel || doc.id).trim()
+          })
+        } else {
+          // Fallback: Ambil dari koleksi topics jika koleksi levels belum diisi
+          this.fetchLevelsFromTopics()
+        }
+      }, (error) => {
+        console.error('Error membaca data levels:', error)
+        this.fetchLevelsFromTopics()
+      })
+    },
+
+    fetchLevelsFromTopics() {
+      const q = query(collection(db, 'topics'))
+      onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          const levelsSet = new Set()
+          snapshot.docs.forEach(doc => {
+            const data = doc.data()
+            const lvl = data.targetLevel || data.targetlevel || data.level
+            if (lvl) levelsSet.add(String(lvl).trim())
+          })
+          this.availableLevels = Array.from(levelsSet)
+        }
+      })
+    },
+
+    // Ambil data ranking real-time dari Firestore
+    fetchRankings() {
+      if (this.unsubscribeRankings) this.unsubscribeRankings()
+
+      let q
+      if (this.selectedClassFilter) {
+        q = query(
+          collection(db, 'rankings'),
+          where('targetLevel', '==', this.selectedClassFilter)
+        )
+      } else {
+        q = query(collection(db, 'rankings'))
+      }
+
+      this.unsubscribeRankings = onSnapshot(q, (snapshot) => {
+        const rawList = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+
+        // Sort secara manual: Accuracy tertinggi (descending), jika sama waktu respon tercepat (ascending)
+        this.studentRankings = rawList.sort((a, b) => {
+          const scoreA = Number(a.accuracy ?? a.spellingScore ?? 0)
+          const scoreB = Number(b.accuracy ?? b.spellingScore ?? 0)
+
+          if (scoreB !== scoreA) {
+            return scoreB - scoreA
+          }
+
+          const timeA = parseFloat(a.avgResponseTime ?? a.responseTime ?? 0)
+          const timeB = parseFloat(b.avgResponseTime ?? b.responseTime ?? 0)
+          return timeA - timeB
+        })
+      }, (error) => {
+        console.error('Error membaca data ranking:', error)
+      })
+    },
+
+    getScoreClass(score) {
+      if (score >= 85) return 'badge-success'
+      if (score >= 70) return 'badge-warning'
+      return 'badge-danger'
+    },
+
+    formatResponseTime(time) {
+      if (time === undefined || time === null) return '0s'
+      const strTime = String(time)
+      return strTime.endsWith('s') ? strTime : `${strTime}s`
+    }
   }
 }
 </script>
@@ -153,6 +210,10 @@ export default {
   border-radius: 6px;
   cursor: pointer;
   font-weight: 600;
+  transition: background-color 0.2s;
+}
+.btn-back:hover {
+  background-color: #475569;
 }
 
 .card {
@@ -172,6 +233,8 @@ export default {
   border: 1px solid #cbd5e1;
   outline: none;
   background-color: white;
+  font-weight: 600;
+  color: #0f172a;
 }
 
 .leaderboard-title { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
@@ -187,7 +250,7 @@ export default {
 .rank-badge { font-weight: 800; font-size: 15px; }
 .text-center { text-align: center; }
 
-.score-badge { padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 12px; }
+.score-badge { padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 12px; display: inline-block; }
 .badge-success { background-color: #dcfce7; color: #15803d; }
 .badge-warning { background-color: #fef9c3; color: #a16207; }
 .badge-danger { background-color: #fee2e2; color: #b91c1c; }
