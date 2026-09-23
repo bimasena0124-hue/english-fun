@@ -307,7 +307,6 @@ export default {
         this.currentTopic = { ...foundTopic }
         this.resetState()
         this.$nextTick(() => {
-          this.autoPlayAudio()
         })
       }
     },
