@@ -306,8 +306,6 @@ export default {
       if (foundTopic) {
         this.currentTopic = { ...foundTopic }
         this.resetState()
-        this.$nextTick(() => {
-        })
       }
     },
 
@@ -319,9 +317,6 @@ export default {
         this.currentTopic = { ...firstTopic }
         this.resetState()
         
-        this.$nextTick(() => {
-          this.autoPlayAudio()
-        })
       } else {
         this.currentTopic = null
         this.selectedTopicId = ''
