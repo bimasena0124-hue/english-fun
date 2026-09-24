@@ -260,19 +260,31 @@ export default {
     async finishSession() {
       this.isFinished = true
 
-      // Hitung rata-rata waktu respon dari log pengerjaan
       const logs = Object.values(this.answersLog)
-      const totalDuration = logs.reduce((acc, curr) => acc + (curr.duration || 0), 0)
-      const avgDuration = logs.length > 0 ? parseFloat((totalDuration / logs.length).toFixed(1)) : 0
+      
+      // Amankan pembagian dengan 0 jika logs kosong
+      let avgDuration = 0
+      let accuracyScore = 0
 
-      // Simpan ke koleksi 'rankings' saat siswa klik Finish
+      if (logs.length > 0) {
+        // Hitung rata-rata waktu respon dari log pengerjaan
+        const totalDuration = logs.reduce((acc, curr) => acc + (curr.duration || 0), 0)
+        avgDuration = parseFloat((totalDuration / logs.length).toFixed(1))
+        
+        // Ambil dari computed property yang sudah ada (pastikan berupa angka)
+        accuracyScore = Number(this.averagePronunciationScore) || 0
+      }
+
       try {
         await addDoc(collection(db, 'rankings'), {
-          studentName: this.studentName,
-          targetLevel: this.selectedLevel,
+          studentName: this.studentName || 'Anonymous', // Fallback nama
+          targetLevel: this.selectedLevel || 'Unknown Level',
           topic: this.currentTopic ? this.currentTopic.title : '-',
-          accuracy: this.averagePronunciationScore, // Nilai rata-rata akurasi (0-100)
-          avgResponseTime: avgDuration,             // Rata-rata durasi (detik)
+          
+          // PASTIKAN KEDUA VARIABEL INI TERKIRIM DENGAN AMAN
+          accuracy: accuracyScore, 
+          avgResponseTime: avgDuration,
+          
           totalQuestions: logs.length,
           createdAt: serverTimestamp()
         })

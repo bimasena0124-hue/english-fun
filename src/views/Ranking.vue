@@ -50,19 +50,19 @@
                 <span v-else-if="index === 2">🥉 3</span>
                 <span v-else>{{ index + 1 }}</span>
               </td>
-              <td><strong>{{ item.studentName || item.nama || 'Anonymous' }}</strong></td>
-              <td><span class="level-badge">{{ item.targetLevel || item.level || '-' }}</span></td>
-              <td>{{ item.topic || '-' }}</td>
+              <td><strong>{{ item.studentName }}</strong></td>
+              <td><span class="level-badge">{{ item.targetLevel }}</span></td>
+              <td>{{ item.topic }}</td>
               <td class="text-center">
-                <span :class="['score-badge', getScoreClass(getScore(item))]">
-                  {{ getScore(item) }}%
+                <span :class="['score-badge', getScoreClass(item.accuracy)]">
+                  {{ item.accuracy }}%
                 </span>
               </td>
-              <td class="text-center">⚡ {{ formatResponseTime(item.avgResponseTime ?? item.responseTime) }}</td>
+              <td class="text-center">⚡ {{ formatResponseTime(item.avgResponseTime) }}</td>
             </tr>
             <tr v-if="studentRankings.length === 0">
               <td colspan="6" class="empty-table">
-                Belum ada data ranking untuk {{ selectedClassFilter ? `kelas ${selectedClassFilter}` : 'semua kelas' }}.
+                Belum ada data log aktivitas siswa untuk {{ selectedClassFilter ? `kelas ${selectedClassFilter}` : 'semua kelas' }}.
               </td>
             </tr>
           </tbody>
@@ -128,46 +128,96 @@ export default {
     fetchRankings() {
       if (this.unsubscribeRankings) this.unsubscribeRankings()
 
-      // Ambil seluruh dokumen dari koleksi 'rankings'
-      const q = query(collection(db, 'rankings'))
+      // Ambil seluruh data dari koleksi 'logs'
+      const q = query(collection(db, 'logs'))
 
       this.unsubscribeRankings = onSnapshot(q, (snapshot) => {
-        let list = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }))
+        const rawLogs = snapshot.docs.map(doc => doc.data())
 
-        // Filter kelas secara lokal (mencegah masalah penulisan kapital/kecil)
+        // 1. DOKUMEN LOG AKAN DIKELOMPOKKAN DENGAN 'groupedData'
+        const groupedData = {}
+
+        rawLogs.forEach(log => {
+          // Buat format nama, topik, dan level yang rapi
+          const name = String(log.studentName || 'Anonymous').trim()
+          const topic = String(log.topic || '-').trim()
+          const level = String(log.targetLevel || log.level || '-').trim()
+
+          // Key Unik: Kombinasi Nama + Topik + Level (menggunakan lowercase agar tidak sensitif huruf besar/kecil)
+          const key = `${name.toLowerCase()}_${topic.toLowerCase()}_${level.toLowerCase()}`
+
+          // Jika siswa + topik ini belum ada di groupedData, buat objek awal
+          if (!groupedData[key]) {
+            groupedData[key] = {
+              id: key,
+              studentName: name,
+              targetLevel: level,
+              topic: topic,
+              totalScore: 0,
+              totalTime: 0,
+              questionCount: 0
+            }
+          }
+
+          // Ambil nilai score pengucapan dari log (spellingScore)
+          const rawScore = Number(log.spellingScore ?? log.score ?? 0)
+          const score = isNaN(rawScore) ? 0 : rawScore
+
+          // Ambil nilai waktu respon dari log (responseTimeNum atau responseTime)
+          let rawTime = log.responseTimeNum ?? log.responseTime ?? 0
+          if (typeof rawTime === 'string') {
+            // Jika nilai berupa string seperti "3.5s", ambil angkanya saja
+            rawTime = parseFloat(rawTime.replace(/[^0-9.]/g, ''))
+          }
+          const time = isNaN(rawTime) ? 0 : rawTime
+
+          // Akumulasikan total skor, total waktu, dan jumlah soal yang dijawab
+          groupedData[key].totalScore += score
+          groupedData[key].totalTime += time
+          groupedData[key].questionCount += 1
+        })
+
+        // 2. HITUNG RATA-RATA AKURASI DAN RATA-RATA WAKTU RESPON
+        let list = Object.values(groupedData).map(item => {
+          const totalQuestions = item.questionCount > 0 ? item.questionCount : 1
+
+          // Rata-rata Skor Akurasi (%)
+          const avgAccuracy = Math.round(item.totalScore / totalQuestions)
+
+          // Rata-rata Waktu Respon (Detik) - dibulatkan 1 angka di belakang koma
+          const avgResponseTime = parseFloat((item.totalTime / totalQuestions).toFixed(1))
+
+          return {
+            id: item.id,
+            studentName: item.studentName,
+            targetLevel: item.targetLevel,
+            topic: item.topic,
+            accuracy: avgAccuracy,
+            avgResponseTime: avgResponseTime,
+            totalQuestionsAnswered: totalQuestions
+          }
+        })
+
+        // 3. FILTER BERDASARKAN KELAS / LEVEL (JIKA DIPILIH PADA DROPDOWN)
         if (this.selectedClassFilter) {
           const targetFilter = this.selectedClassFilter.trim().toLowerCase()
           list = list.filter(item => {
-            const itemLevel = String(item.targetLevel || item.level || '').trim().toLowerCase()
-            return itemLevel === targetFilter
+            return item.targetLevel.toLowerCase() === targetFilter
           })
         }
 
-        // Urutkan secara lokal:
-        // 1. Accuracy/Score tertinggi
-        // 2. Jika sama, Response Time tercepat
+        // 4. URUTKAN (SORTING) LEADERBOARD:
+        //    - Prioritas 1: Rata-rata Akurasi tertinggi di atas
+        //    - Prioritas 2: Rata-rata Waktu Respon tercepat di atas (jika akurasi sama)
         this.studentRankings = list.sort((a, b) => {
-          const scoreA = this.getScore(a)
-          const scoreB = this.getScore(b)
-
-          if (scoreB !== scoreA) {
-            return scoreB - scoreA
+          if (b.accuracy !== a.accuracy) {
+            return b.accuracy - a.accuracy
           }
-
-          const timeA = parseFloat(a.avgResponseTime ?? a.responseTime ?? 0)
-          const timeB = parseFloat(b.avgResponseTime ?? b.responseTime ?? 0)
-          return timeA - timeB
+          return a.avgResponseTime - b.avgResponseTime
         })
       }, (error) => {
-        console.error('Error membaca data ranking:', error)
+        console.error('Error membaca data logs untuk ranking:', error)
       })
-    },
-
-    getScore(item) {
-      return Number(item.accuracy ?? item.spellingScore ?? item.score ?? 0)
     },
 
     getScoreClass(score) {
@@ -177,9 +227,8 @@ export default {
     },
 
     formatResponseTime(time) {
-      if (time === undefined || time === null) return '0s'
-      const strTime = String(time)
-      return strTime.endsWith('s') ? strTime : `${strTime}s`
+      if (time === undefined || time === null || time === Infinity || isNaN(time)) return '0s'
+      return `${time}s`
     }
   }
 }
