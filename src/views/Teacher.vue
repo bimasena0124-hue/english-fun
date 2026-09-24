@@ -1,227 +1,293 @@
 <template>
-  <div class="teacher-container">
-    <!-- Tombol Logout & Header Status -->
-    <div class="top-bar">
-      <span class="auth-status">🟢 Logged in as Teacher</span>
-      <button @click="$router.push('/ranking')" class="btn-ranking">
-          🏆 View Student Rankings
-        </button> 
-      <button @click="logout" class="btn-logout">🚪 Logout</button>
-    </div>
-
-    <!-- 1. SECTION: TEACHER SETUP -->
-    <div class="card card-setup">
-      <!-- Header Accordion -->
-      <div class="card-header" @click="isExpanded = !isExpanded">
-        <span class="accordion-arrow">{{ isExpanded ? '▼' : '▶' }}</span>
-        <span class="header-icon">⚙️</span>
-        <h2 class="header-title">Teacher Setup & Topic Generator</h2>
+  <div class="admin-layout">
+    <!-- SIDEBAR / NAVIGASI ADMIN -->
+    <aside class="admin-sidebar" :class="{ 'sidebar-open': mobileMenuOpen }">
+      <div class="brand">
+        <div class="brand-icon">EF</div>
+        <div>
+          <h2>English Fun</h2>
+          <span>Admin Dashboard</span>
+        </div>
       </div>
 
-      <!-- Content / Form -->
-      <div v-show="isExpanded" class="card-body">
-        <!-- Target Level Name -->
-        <div class="form-group">
-          <label class="form-label">1. Class Name (Primary Key / Group):</label>
-          <input
-            v-model="formData.targetLevel"
-            type="text"
-            class="form-input"
-            placeholder="e.g. Grade 1 Elementary / Beginner"
-          />
-        </div>
+      <nav class="admin-nav">
+        <button :class="['nav-item', activeSection === 'dashboard' ? 'active' : '']"
+                @click="setSection('dashboard')">
+          <span>📊</span><span>Dashboard</span>
+        </button>
+        <button :class="['nav-item', activeSection === 'topics' ? 'active' : '']"
+                @click="setSection('topics')">
+          <span>📚</span><span>Kelola Topik</span>
+        </button>
+        <button :class="['nav-item', activeSection === 'logs' ? 'active' : '']"
+                @click="setSection('logs')">
+          <span>📝</span><span>Aktivitas Siswa</span>
+        </button>
+        <button :class="['nav-item', activeSection === 'ranking' ? 'active' : '']"
+                @click="setSection('ranking')">
+          <span>🏆</span><span>Ranking Siswa</span>
+        </button>
+        <button class="nav-item" @click="$router.push('/student')">
+          <span>🎓</span><span>Area Siswa</span>
+        </button>
+      </nav>
 
-        <!-- Start Date & Due Date -->
-        <div class="form-row">
-          <div class="form-group col">
-            <label class="form-label">2. Start Date & Time:</label>
-            <input
-              v-model="formData.startDateTime"
-              type="datetime-local"
-              class="form-input"
-            />
-          </div>
-          <div class="form-group col">
-            <label class="form-label">3. Due Date & Time:</label>
-            <input
-              v-model="formData.dueDateTime"
-              type="datetime-local"
-              class="form-input"
-            />
+      <div class="sidebar-bottom">
+        <div class="admin-user">
+          <div class="user-avatar">A</div>
+          <div>
+            <strong>Administrator</strong>
+            <small>Teacher Access</small>
           </div>
         </div>
+        <button @click="logout" class="logout-side">🚪 Logout</button>
+      </div>
+    </aside>
 
-        <!-- Select AI Voice -->
-        <div class="form-group">
-          <label class="form-label">4. Select AI Voice:</label>
-          <select v-model="formData.aiVoice" class="form-select">
-            <option value="en-US">English (United States) - Standard</option>
-            <option value="en-GB">English (United Kingdom) - Standard</option>
-          </select>
+    <!-- AREA UTAMA -->
+    <main class="admin-main">
+      <div class="mobile-header">
+        <button class="menu-button" @click="mobileMenuOpen = !mobileMenuOpen">☰</button>
+        <strong>English Fun</strong>
+        <button class="mobile-logout" @click="logout">🚪</button>
+      </div>
+
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">ADMIN PANEL</p>
+          <h1>{{ sectionTitle }}</h1>
+          <p class="page-subtitle">{{ sectionSubtitle }}</p>
+        </div>
+        <div class="header-actions">
+          <button class="header-btn" @click="setSection('ranking')">🏆 Ranking</button>
+          <button class="header-btn primary" @click="setSection('topics')">+ Tambah Topik</button>
+        </div>
+      </header>
+
+      <!-- DASHBOARD -->
+      <section v-if="activeSection === 'dashboard'" class="section-content">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon">📚</div>
+            <div><span class="stat-value">{{ topicsList.length }}</span><span class="stat-label">Total Topik</span></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🏫</div>
+            <div><span class="stat-value">{{ availableLevels.length }}</span><span class="stat-label">Kelas Aktif</span></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">👥</div>
+            <div><span class="stat-value">{{ uniqueStudentCount }}</span><span class="stat-label">Siswa Aktif</span></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">💬</div>
+            <div><span class="stat-value">{{ logs.length }}</span><span class="stat-label">Aktivitas Terekam</span></div>
+          </div>
         </div>
 
-        <div class="divider"></div>
-
-        <!-- Manage Topics -->
-        <div class="form-group">
-          <label class="form-label">5. Manage Topics & Expected Answers:</label>
-          
-          <div class="form-row">
-            <div class="col">
-              <input
-                v-model="formData.topicTitle"
-                type="text"
-                class="form-input"
-                placeholder="Topic Title (e.g. Dolphin)"
-              />
+        <div class="dashboard-grid">
+          <div class="panel quick-panel">
+            <div class="panel-heading">
+              <div><h2>Akses Cepat</h2><p>Kelola aplikasi tanpa membuka banyak halaman.</p></div>
             </div>
-            <div class="col">
-              <div class="file-input-wrapper">
-                <input
-                  type="file"
-                  id="file-upload"
-                  accept="image/*"
-                  @change="handleFileUpload"
-                  class="file-input-hidden"
-                />
-                <label for="file-upload" class="file-input-label">
-                  <span class="btn-browse">Browse...</span>
-                  <span class="file-name">{{ selectedFileName || 'No file selected (Max 1MB).' }}</span>
-                </label>
+            <div class="quick-actions">
+              <button @click="setSection('topics')" class="quick-action">
+                <span class="quick-icon blue">📚</span>
+                <span><strong>Kelola Topik</strong><small>Tambah, lihat, dan hapus materi latihan.</small></span>
+                <b>›</b>
+              </button>
+              <button @click="setSection('logs')" class="quick-action">
+                <span class="quick-icon green">📝</span>
+                <span><strong>Aktivitas Siswa</strong><small>Pantau interaksi siswa secara realtime.</small></span>
+                <b>›</b>
+              </button>
+              <button @click="setSection('ranking')" class="quick-action">
+                <span class="quick-icon orange">🏆</span>
+                <span><strong>Ranking Siswa</strong><small>Lihat hasil dan peringkat berdasarkan kelas.</small></span>
+                <b>›</b>
+              </button>
+              <button @click="$router.push('/student')" class="quick-action">
+                <span class="quick-icon purple">🎓</span>
+                <span><strong>Preview Area Siswa</strong><small>Cek tampilan belajar dari sisi siswa.</small></span>
+                <b>›</b>
+              </button>
+            </div>
+          </div>
+
+          <div class="panel summary-panel">
+            <div class="panel-heading">
+              <div><h2>Ringkasan Kelas</h2><p>Kelas yang tersedia di sistem.</p></div>
+            </div>
+            <div v-if="availableLevels.length" class="class-list">
+              <div v-for="level in availableLevels" :key="level" class="class-row">
+                <span class="class-dot"></span>
+                <span>{{ level }}</span>
+                <small>Aktif</small>
               </div>
             </div>
+            <div v-else class="empty-state">Belum ada kelas.</div>
+          </div>
+        </div>
+
+        <div class="panel recent-panel">
+          <div class="panel-heading">
+            <div><h2>Informasi Sistem</h2><p>Data diperbarui otomatis dari Firebase.</p></div>
+            <span class="live-badge">● REALTIME</span>
+          </div>
+          <div class="info-grid">
+            <div><strong>{{ topicsList.length }}</strong><span>Topik tersimpan</span></div>
+            <div><strong>{{ availableLevels.length }}</strong><span>Kelas tersedia</span></div>
+            <div><strong>{{ logs.length }}</strong><span>Aktivitas terbaru</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- KELOLA TOPIK -->
+      <section v-if="activeSection === 'topics'" class="section-content">
+        <div class="panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Tambah Topik Baru</h2>
+              <p>Masukkan kelas, waktu, pertanyaan, dan jawaban target.</p>
+            </div>
+            <button class="collapse-btn" @click="isExpanded = !isExpanded">
+              {{ isExpanded ? 'Sembunyikan Form' : 'Tampilkan Form' }}
+            </button>
           </div>
 
-          <!-- Input Pertanyaan -->
-          <div class="form-group mt-10">
-            <label class="sub-label">Questions (separated by semicolon ';'):</label>
-            <input
-              v-model="formData.questions"
-              type="text"
-              class="form-input"
-              placeholder="e.g. What animal is this?; Where does it live?"
-            />
-          </div>
-
-          <!-- Input Kunci Jawaban / Expected Answers dari Guru -->
-          <div class="form-group mt-10">
-            <label class="sub-label">Expected Answers / Target Answers (separated by semicolon ';'):</label>
-            <input
-              v-model="formData.expectedAnswers"
-              type="text"
-              class="form-input input-answer"
-              placeholder="e.g. It is a dolphin; It lives in the ocean"
-            />
-          </div>
-
-          <!-- Action Buttons -->
-          <div class="form-row mt-15">
-            <button 
-              class="btn btn-warning col" 
-              :disabled="isUploading" 
-              @click="saveTopic"
-            >
-              <span class="btn-icon">+</span> 
-              {{ isUploading ? 'Saving Topic...' : 'Save New Topic & Level' }}
+          <div v-show="isExpanded" class="topic-form">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Class Name</label>
+                <input v-model="formData.targetLevel" type="text" class="form-input" placeholder="e.g. Grade 1 Elementary" />
+              </div>
+              <div class="form-group">
+                <label>AI Voice</label>
+                <select v-model="formData.aiVoice" class="form-select">
+                  <option value="en-US">English (United States)</option>
+                  <option value="en-GB">English (United Kingdom)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Start Date & Time</label>
+                <input v-model="formData.startDateTime" type="datetime-local" class="form-input" />
+              </div>
+              <div class="form-group">
+                <label>Due Date & Time</label>
+                <input v-model="formData.dueDateTime" type="datetime-local" class="form-input" />
+              </div>
+              <div class="form-group full">
+                <label>Topic Title</label>
+                <input v-model="formData.topicTitle" type="text" class="form-input" placeholder="e.g. Dolphin" />
+              </div>
+              <div class="form-group full">
+                <label>Image</label>
+                <div class="file-input-wrapper">
+                  <input type="file" id="file-upload-admin" accept="image/*" @change="handleFileUpload" class="file-input-hidden" />
+                  <label for="file-upload-admin" class="file-input-label">
+                    <span class="btn-browse">Browse</span>
+                    <span class="file-name">{{ selectedFileName || 'No file selected (Max 1MB).' }}</span>
+                  </label>
+                </div>
+              </div>
+              <div class="form-group full">
+                <label>Questions <small>(pisahkan dengan ;)</small></label>
+                <textarea v-model="formData.questions" class="form-input textarea" placeholder="What animal is this?; Where does it live?"></textarea>
+              </div>
+              <div class="form-group full">
+                <label>Expected Answers <small>(pisahkan dengan ;)</small></label>
+                <textarea v-model="formData.expectedAnswers" class="form-input textarea" placeholder="It is a dolphin; It lives in the ocean"></textarea>
+              </div>
+            </div>
+            <button class="save-btn" :disabled="isUploading" @click="saveTopic">
+              {{ isUploading ? 'Menyimpan...' : '＋ Simpan Topik & Kelas' }}
             </button>
           </div>
         </div>
 
-        <!-- AREA PREVIEW & HAPUS SOAL -->
-        <div class="preview-section mt-20">
-          <h3 class="preview-title">📋 Student Questions & Expected Answers Preview</h3>
-          
-          <div v-if="topicsList.length === 0" class="empty-preview">
-            Belum ada topik tersimpan di database.
+        <div class="panel">
+          <div class="panel-heading">
+            <div><h2>Daftar Topik</h2><p>{{ topicsList.length }} topik tersimpan.</p></div>
           </div>
-
+          <div v-if="topicsList.length === 0" class="empty-state">Belum ada topik tersimpan di database.</div>
           <div v-else class="topic-list">
             <div v-for="topic in topicsList" :key="topic.id" class="topic-card">
-              <div class="topic-header">
-                <div class="topic-info">
-                  <span class="topic-badge">🐬 {{ topic.title }}</span>
+              <div class="topic-card-top">
+                <div>
+                  <h3>{{ topic.title }}</h3>
                   <span class="level-badge">{{ topic.targetLevel }}</span>
                 </div>
-                <div class="action-buttons">
-                  <button class="btn-voice-small" @click="speakAllQuestions(topic.questions)">
-                    🔊 Read All Questions
-                  </button>
-                  <button class="btn-delete-small" @click="deleteTopic(topic.id, topic.title)">
-                    🗑️ Delete Topic
-                  </button>
+                <div class="topic-actions">
+                  <button class="small-btn voice" @click="speakAllQuestions(topic.questions)">🔊 Baca</button>
+                  <button class="small-btn danger" @click="deleteTopic(topic.id, topic.title)">🗑 Hapus</button>
                 </div>
               </div>
-
-              <!-- Preview Gambar (Base64 / URL) -->
               <div v-if="topic.imageUrl" class="topic-image-preview">
                 <img :src="topic.imageUrl" alt="Topic Image Preview" />
               </div>
-
-              <div class="topic-questions">
-                <p class="question-label">Questions & Answer Key Preview:</p>
-                <ol class="question-ol">
-                  <li v-for="(q, index) in topic.questions" :key="index" class="question-item">
-                    <div class="q-and-a">
-                      <div class="q-text">
-                        <strong>Q:</strong> "{{ q }}"
-                        <button class="btn-speak-single" @click="speakText(q)" title="Play question audio">
-                          🔊
-                        </button>
-                      </div>
-                      <div class="a-text" v-if="topic.expectedAnswers && topic.expectedAnswers[index]">
-                        <strong>Expected Answer:</strong> <em>"{{ topic.expectedAnswers[index] }}"</em>
-                      </div>
+              <details class="question-details">
+                <summary>Lihat {{ topic.questions?.length || 0 }} pertanyaan & jawaban</summary>
+                <ol>
+                  <li v-for="(q, index) in topic.questions" :key="index">
+                    <div class="q-text"><strong>Q:</strong> "{{ q }}"
+                      <button class="mini-speak" @click.prevent="speakText(q)">🔊</button>
+                    </div>
+                    <div v-if="topic.expectedAnswers && topic.expectedAnswers[index]" class="a-text">
+                      <strong>Answer:</strong> "{{ topic.expectedAnswers[index] }}"
                     </div>
                   </li>
                 </ol>
-              </div>
+              </details>
             </div>
           </div>
         </div>
+      </section>
 
-      </div>
-    </div>
-
-    <!-- FILTER BAR UNTUK MONITORING KELAS -->
-    <div class="filter-card">
-      <div class="filter-group">
-        <label class="filter-label">🎯 Filter by Class Name:</label>
-        <select v-model="selectedClassFilter" @change="setupRealtimeListeners" class="form-select filter-select">
-          <option value="">-- All Classes --</option>
-          <option v-for="lvl in availableLevels" :key="lvl" :value="lvl">
-            {{ lvl }}
-          </option>
-        </select>
-      </div>
-    </div>
-
-
-    <!-- 3. SECTION: INTERACTION LOG -->
-    <div class="card card-section">
-      <div class="log-header">
-        <div class="title-left">
-          <h3 class="log-title">Interaction Log:</h3>
-          <span class="class-tag" v-if="selectedClassFilter">Class: {{ selectedClassFilter }}</span>
+      <!-- RANKING SISWA -->
+      <section v-if="activeSection === 'ranking'" class="section-content">
+        <div class="panel ranking-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Ranking Siswa</h2>
+              <p>Peringkat siswa berdasarkan hasil latihan yang tersimpan di Firebase.</p>
+            </div>
+          </div>
+          <Ranking :embedded="true" />
         </div>
-        <!-- Tombol Reset Log -->
-        <button 
-          class="btn-delete-small" 
-          @click="clearLogsData" 
-          :disabled="logs.length === 0"
-        >
-          🗑️ Clear Logs
-        </button>
-      </div>
-      <div class="log-container">
-        <div v-for="(log, idx) in logs" :key="idx" class="log-bubble">
-          {{ log.message || log }}
-        </div>
-        <div v-if="logs.length === 0" class="log-bubble empty-log">
-          Belum ada aktivitas interaksi dari siswa di kelas ini.
-        </div>
-      </div>
-    </div>
+      </section>
 
+      <!-- MONITORING -->
+      <section v-if="activeSection === 'logs'" class="section-content">
+        <div class="panel filter-panel">
+          <div class="filter-left">
+            <label>Filter Kelas</label>
+            <select v-model="selectedClassFilter" @change="setupRealtimeListeners" class="form-select">
+              <option value="">Semua Kelas</option>
+              <option v-for="lvl in availableLevels" :key="lvl" :value="lvl">{{ lvl }}</option>
+            </select>
+          </div>
+          <button class="danger-btn" @click="clearLogsData" :disabled="logs.length === 0">🗑 Hapus Log</button>
+        </div>
+
+        <div class="panel">
+          <div class="panel-heading">
+            <div><h2>Aktivitas Siswa</h2><p>Monitoring aktivitas siswa secara realtime.</p></div>
+            <span class="live-badge">● REALTIME</span>
+          </div>
+          <div class="log-list">
+            <div v-for="(log, idx) in logs" :key="idx" class="log-item">
+              <div class="log-avatar">👤</div>
+              <div class="log-content">
+                <strong>{{ log.studentName || 'Student' }}</strong>
+                <span>{{ log.message || log }}</span>
+              </div>
+              <small>{{ log.targetLevel || '-' }}</small>
+            </div>
+            <div v-if="logs.length === 0" class="empty-state">Belum ada aktivitas interaksi dari siswa di kelas ini.</div>
+          </div>
+        </div>
+      </section>
+    </main>
   </div>
 </template>
 
@@ -243,10 +309,17 @@ import {
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { signOut } from 'firebase/auth'
 
+import Ranking from './Ranking.vue'
+
 export default {
-  name: 'Teacher',
+  name: 'AdminDashboard',
+  components: {
+    Ranking
+  },
   data() {
     return {
+      activeSection: 'dashboard',
+      mobileMenuOpen: false,
       isExpanded: true,
       selectedFileName: '',
       isUploading: false,
@@ -265,6 +338,14 @@ export default {
       topicsList: [],
       logs: [],
       unsubscribeLogs: null,
+    }
+  },
+  computed: {
+    uniqueStudentCount() {
+      const names = this.logs
+        .map(log => log && log.studentName)
+        .filter(Boolean)
+      return new Set(names).size
     }
   },
   mounted() {
@@ -290,6 +371,11 @@ export default {
     if (this.unsubscribeLogs) this.unsubscribeLogs()
   },
   methods: {
+    setSection(section) {
+      this.activeSection = section
+      this.mobileMenuOpen = false
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    },
     handleFileUpload(event) {
       const file = event.target.files[0]
       if (file) {
@@ -472,149 +558,3 @@ export default {
   }
 }
 </script>
-
-<style scoped>
-
-.top-bar-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.btn-ranking {
-  background-color: #f59e0b;
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: bold;
-  font-size: 13px;
-}
-
-.btn-ranking:hover {
-  background-color: #d97706;
-}
-.teacher-container {
-  width: 100%;
-  max-width: 900px;
-  margin: 20px auto;
-  padding: 0 15px;
-  box-sizing: border-box;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.top-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background-color: #1e293b;
-  color: white;
-  padding: 12px 20px;
-  border-radius: 8px;
-}
-.auth-status { font-weight: 600; font-size: 14px; }
-.btn-logout {
-  background-color: #ef4444; color: white; border: none;
-  padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: bold;
-}
-
-.card {
-  background-color: #ffffff;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  user-select: none;
-}
-.accordion-arrow { color: #64748b; font-size: 14px; }
-.header-icon { font-size: 20px; }
-.header-title { margin: 0; font-size: 18px; color: #0f172a; flex: 1; }
-
-.card-body { margin-top: 20px; }
-.form-group { margin-bottom: 16px; }
-.form-label { display: block; font-weight: 700; font-size: 14px; color: #334155; margin-bottom: 6px; }
-.sub-label { display: block; font-weight: 600; font-size: 13px; color: #64748b; margin-bottom: 4px; }
-
-.form-input, .form-select {
-  width: 100%; height: 40px; padding: 0 12px;
-  border-radius: 6px; border: 1px solid #cbd5e1; outline: none; box-sizing: border-box;
-}
-.form-input:focus, .form-select:focus { border-color: #0077b6; }
-.input-answer { border-color: #86efac; background-color: #f0fdf4; }
-
-.form-row { display: flex; gap: 12px; flex-wrap: wrap; }
-.col { flex: 1; min-width: 200px; }
-
-.file-input-wrapper { position: relative; }
-.file-input-hidden { display: none; }
-.file-input-label {
-  display: flex; align-items: center; border: 1px solid #cbd5e1;
-  border-radius: 6px; height: 40px; cursor: pointer; overflow: hidden;
-}
-.btn-browse {
-  background-color: #e2e8f0; padding: 0 12px; height: 100%;
-  display: flex; align-items: center; font-size: 13px; font-weight: 600; color: #334155;
-}
-.file-name { padding: 0 12px; font-size: 13px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-.divider { height: 1px; background-color: #e2e8f0; margin: 20px 0; }
-
-.btn {
-  height: 42px; border: none; border-radius: 6px; font-weight: bold;
-  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
-}
-.btn-warning { background-color: #f59e0b; color: white; }
-.btn-warning:hover { background-color: #d97706; }
-.btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-.preview-section { background-color: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; }
-.preview-title { margin: 0 0 12px 0; font-size: 15px; color: #334155; }
-.empty-preview { font-size: 13px; color: #94a3b8; font-style: italic; }
-
-.topic-list { display: flex; flex-direction: column; gap: 12px; }
-.topic-card { background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; }
-.topic-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.topic-badge { font-weight: 700; color: #0077b6; }
-.level-badge { background-color: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
-
-.topic-image-preview { margin: 10px 0; }
-.topic-image-preview img { max-width: 150px; max-height: 120px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e1; }
-
-.action-buttons { display: flex; gap: 6px; }
-.btn-voice-small, .btn-delete-small, .btn-speak-single {
-  border: none; padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 600;
-}
-.btn-voice-small { background-color: #e0f2fe; color: #0369a1; }
-.btn-delete-small { background-color: #fee2e2; color: #991b1b; }
-.btn-delete-small:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-speak-single { background-color: transparent; font-size: 14px; }
-
-.question-label { font-size: 12px; font-weight: 700; color: #64748b; margin: 0 0 6px 0; }
-.question-ol { margin: 0; padding-left: 20px; font-size: 13px; color: #334155; }
-.question-item { margin-bottom: 6px; }
-.q-and-a { display: flex; flex-direction: column; gap: 2px; }
-.a-text { color: #15803d; font-size: 12px; }
-
-.filter-card { background-color: #f1f5f9; padding: 12px 16px; border-radius: 8px; }
-.filter-group { display: flex; align-items: center; gap: 12px; }
-.filter-label { font-weight: 700; font-size: 14px; color: #334155; white-space: nowrap; }
-.filter-select { max-width: 250px; background-color: white; }
-
-.log-container { background-color: #0f172a; border-radius: 8px; padding: 16px; max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-.log-bubble { font-family: monospace; font-size: 12px; color: #38bdf8; line-height: 1.4; }
-.empty-log { color: #64748b; font-style: italic; }
-
-.mt-10 { margin-top: 10px; }
-.mt-15 { margin-top: 15px; }
-.mt-20 { margin-top: 20px; }
-</style>

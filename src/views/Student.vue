@@ -193,6 +193,7 @@ export default {
     }
   },
   computed: {
+    // Filter topik berdasarkan Class yang dipilih secara toleran (case-insensitive & trim)
     filteredTopics() {
       if (!this.selectedLevel) return this.topicsList
 
@@ -240,6 +241,7 @@ export default {
         if (!snapshot.empty) {
           this.availableLevels = snapshot.docs.map(doc => {
             const data = doc.data()
+            // Ekstrak nama level: prioritas dari field 'name', jika kosong gunakan Document ID (doc.id)
             const levelName = data.name || data.targetLevel || doc.id
             return {
               id: doc.id,
@@ -247,6 +249,7 @@ export default {
             }
           })
 
+          // Jika selectedLevel belum ada, otomatis pilih indeks pertama
           if (!this.selectedLevel && this.availableLevels.length > 0) {
             this.selectedLevel = this.availableLevels[0].name
           }
@@ -258,41 +261,29 @@ export default {
     },
 
     async finishSession() {
-      this.isFinished = true
+    this.isFinished = true
 
-      const logs = Object.values(this.answersLog)
-      
-      // Amankan pembagian dengan 0 jika logs kosong
-      let avgDuration = 0
-      let accuracyScore = 0
+    // Hitung rata-rata waktu respon dari log yang tersimpan
+    const logs = Object.values(this.answersLog)
+    const totalDuration = logs.reduce((acc, curr) => acc + (curr.duration || 0), 0)
+    const avgDuration = logs.length > 0 ? parseFloat((totalDuration / logs.length).toFixed(1)) : 0
 
-      if (logs.length > 0) {
-        // Hitung rata-rata waktu respon dari log pengerjaan
-        const totalDuration = logs.reduce((acc, curr) => acc + (curr.duration || 0), 0)
-        avgDuration = parseFloat((totalDuration / logs.length).toFixed(1))
-        
-        // Ambil dari computed property yang sudah ada (pastikan berupa angka)
-        accuracyScore = Number(this.averagePronunciationScore) || 0
-      }
-
-      try {
-        await addDoc(collection(db, 'rankings'), {
-          studentName: this.studentName || 'Anonymous', // Fallback nama
-          targetLevel: this.selectedLevel || 'Unknown Level',
-          topic: this.currentTopic ? this.currentTopic.title : '-',
-          
-          // PASTIKAN KEDUA VARIABEL INI TERKIRIM DENGAN AMAN
-          accuracy: accuracyScore, 
-          avgResponseTime: avgDuration,
-          
-          totalQuestions: logs.length,
-          createdAt: serverTimestamp()
-        })
-        console.log('Data ranking berhasil dikirim ke Firestore!')
-      } catch (error) {
-        console.error('Gagal menyimpan data ranking:', error)
-      }
-    },
+    // Simpan ke koleksi 'rankings' HANYA saat siswa klik Finish
+    try {
+      await addDoc(collection(db, 'rankings'), {
+        studentName: this.studentName,
+        targetLevel: this.selectedLevel,
+        topic: this.currentTopic ? this.currentTopic.title : '-',
+        accuracy: this.averagePronunciationScore, // Nilai rata-rata akurasi (0-100)
+        avgResponseTime: avgDuration,             // Rata-rata durasi (detik)
+        totalQuestions: logs.length,
+        createdAt: serverTimestamp()
+      })
+      console.log('Data ranking berhasil dikirim!')
+    } catch (error) {
+      console.error('Gagal menyimpan data ranking:', error)
+    }
+  },
 
     fetchTopics() {
       const q = query(collection(db, 'topics'))
@@ -303,6 +294,7 @@ export default {
             return {
               id: doc.id,
               title: data.title || '',
+              // Membaca field targetLevel/targetlevel/level di Firestore
               targetLevel: String(data.targetLevel || data.targetlevel || data.level || '').trim(),
               imageUrl: data.imageUrl || '',
               aiVoice: data.aiVoice || 'en-US',
@@ -311,6 +303,7 @@ export default {
             }
           })
           
+          // Fallback: Jika koleksi 'levels' kosong, ambil daftar level unik dari koleksi 'topics'
           if (this.availableLevels.length === 0) {
             const uniqueLevels = [...new Set(this.topicsList.map(t => t.targetLevel).filter(Boolean))]
             this.availableLevels = uniqueLevels.map(lvl => ({ id: lvl, name: lvl }))
@@ -343,15 +336,19 @@ export default {
 
     updateTopicSelection() {
       if (this.filteredTopics.length > 0) {
+        // Otomatis pilih topik pertama yang sesuai dengan Class terpilih
         const firstTopic = this.filteredTopics[0]
         this.selectedTopicId = firstTopic.id
         this.currentTopic = { ...firstTopic }
         this.resetState()
+        
       } else {
         this.currentTopic = null
         this.selectedTopicId = ''
       }
     },
+
+   
 
     speakQuestion(text) {
       if ('speechSynthesis' in window && text) {
@@ -363,10 +360,11 @@ export default {
       }
     },
 
-    initSpeechRecognition() {
+   initSpeechRecognition() {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
       if (SpeechRecognition) {
         this.recognition = new SpeechRecognition()
+        // Diubah ke false agar browser langsung menyelesaikan transkripsi saat siswa selesai bicara/stop
         this.recognition.continuous = false 
         this.recognition.interimResults = true
         this.recognition.lang = 'en-US'
@@ -386,6 +384,7 @@ export default {
           this.isListening = false
         }
 
+        // PERBAIKAN: Selalu jalankan evaluasi & simpan saat sesi perekaman berakhir
         this.recognition.onend = () => {
           this.isListening = false
           if (this.spokenText.trim()) {
@@ -402,6 +401,7 @@ export default {
       }
 
       if (this.isListening) {
+        // Hentikan perekaman (event onend di atas akan otomatis terpicu untuk menyimpan data)
         this.recognition.stop()
       } else {
         this.spokenText = ''
@@ -522,10 +522,12 @@ export default {
         this.spokenText = ''
         this.evaluationResult = null
       }
+      this.autoPlayAudio()
     },
 
     restartPractice() {
       this.resetState()
+      this.autoPlayAudio()
     },
 
     resetState() {

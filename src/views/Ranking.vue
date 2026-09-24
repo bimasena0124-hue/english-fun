@@ -1,10 +1,7 @@
 <template>
-  <div class="ranking-container">
-    <!-- Top Header Bar -->
-    <div class="top-bar">
-      <h2>🏆 Leaderboard & Student Rankings</h2>
-      <button @click="$router.push('/')" class="btn-back">⬅️ Back to Student Area</button>
-    </div>
+  <div class="ranking-container" :class="{ embedded: embedded }">
+    <!-- Header hanya tampil saat Ranking dibuka sebagai halaman mandiri -->
+  
 
     <!-- Filter berdasarkan Class / Level -->
     <div class="card filter-card">
@@ -50,20 +47,18 @@
                 <span v-else-if="index === 2">🥉 3</span>
                 <span v-else>{{ index + 1 }}</span>
               </td>
-              <td><strong>{{ item.studentName }}</strong></td>
+              <td><strong>{{ item.studentName || item.nama }}</strong></td>
               <td><span class="level-badge">{{ item.targetLevel }}</span></td>
-              <td>{{ item.topic }}</td>
+              <td>{{ item.topic || '-' }}</td>
               <td class="text-center">
-                <span :class="['score-badge', getScoreClass(item.accuracy)]">
-                  {{ item.accuracy }}%
+                <span :class="['score-badge', getScoreClass(item.spellingScore || item.accuracy)]">
+                  {{ item.spellingScore || item.accuracy }}%
                 </span>
               </td>
-              <td class="text-center">⚡ {{ formatResponseTime(item.avgResponseTime) }}</td>
+              <td class="text-center">⚡ {{ item.responseTime || item.avgResponseTime }}s</td>
             </tr>
             <tr v-if="studentRankings.length === 0">
-              <td colspan="6" class="empty-table">
-                Belum ada data log aktivitas siswa untuk {{ selectedClassFilter ? `kelas ${selectedClassFilter}` : 'semua kelas' }}.
-              </td>
+              <td colspan="6" class="empty-table">Belum ada data ranking untuk kelas ini.</td>
             </tr>
           </tbody>
         </table>
@@ -247,6 +242,12 @@ export default {
   gap: 16px;
 }
 
+.ranking-container.embedded {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
 .top-bar {
   display: flex;
   justify-content: space-between;
@@ -265,9 +266,7 @@ export default {
   border-radius: 6px;
   cursor: pointer;
   font-weight: 600;
-  transition: background-color 0.2s;
 }
-.btn-back:hover { background-color: #475569; }
 
 .card {
   background-color: #ffffff;
@@ -286,8 +285,6 @@ export default {
   border: 1px solid #cbd5e1;
   outline: none;
   background-color: white;
-  font-weight: 600;
-  color: #0f172a;
 }
 
 .leaderboard-title { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
@@ -303,7 +300,7 @@ export default {
 .rank-badge { font-weight: 800; font-size: 15px; }
 .text-center { text-align: center; }
 
-.score-badge { padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 12px; display: inline-block; }
+.score-badge { padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 12px; }
 .badge-success { background-color: #dcfce7; color: #15803d; }
 .badge-warning { background-color: #fef9c3; color: #a16207; }
 .badge-danger { background-color: #fee2e2; color: #b91c1c; }
