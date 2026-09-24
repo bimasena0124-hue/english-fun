@@ -611,15 +611,23 @@ export default {
   border-color: #0077b6;
 }
 
-.image-wrapper { text-align: center; margin-bottom: 16px; }
+.image-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 16px;
+}
+
 .topic-image { 
+  display: block;
+  margin: 0 auto;
   max-width: 100%; 
   max-height: 300px; 
   border-radius: 8px; 
   object-fit: cover; 
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
-
 .teacher-answer-box {
   background-color: #f0fdf4;
   border: 2px dashed #22c55e;
