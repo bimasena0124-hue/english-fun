@@ -17,18 +17,18 @@
         </button>
         <button :class="['nav-item', activeSection === 'topics' ? 'active' : '']"
                 @click="setSection('topics')">
-          <span>📚</span><span>Kelola Topik</span>
+          <span>📚</span><span>Manage Topic</span>
         </button>
         <button :class="['nav-item', activeSection === 'logs' ? 'active' : '']"
                 @click="setSection('logs')">
-          <span>📝</span><span>Aktivitas Siswa</span>
+          <span>📝</span><span>Interaction Logs</span>
         </button>
         <button :class="['nav-item', activeSection === 'ranking' ? 'active' : '']"
                 @click="setSection('ranking')">
-          <span>🏆</span><span>Ranking Siswa</span>
+          <span>🏆</span><span>Student Ranking</span>
         </button>
         <button class="nav-item" @click="$router.push('/student')">
-          <span>🎓</span><span>Area Siswa</span>
+          <span>🎓</span><span>Student Area</span>
         </button>
       </nav>
 
@@ -93,22 +93,22 @@
             <div class="quick-actions">
               <button @click="setSection('topics')" class="quick-action">
                 <span class="quick-icon blue">📚</span>
-                <span><strong>Kelola Topik</strong><small>Tambah, lihat, dan hapus materi latihan.</small></span>
+                <span><strong>Manage Topics</strong><small>Add, view, and delete practice materials.</small></span>
                 <b>›</b>
               </button>
               <button @click="setSection('logs')" class="quick-action">
                 <span class="quick-icon green">📝</span>
-                <span><strong>Aktivitas Siswa</strong><small>Pantau interaksi siswa secara realtime.</small></span>
+                <span><strong>Interaction Logs</strong><small>Monitor student interactions in real-time.</small></span>
                 <b>›</b>
               </button>
               <button @click="setSection('ranking')" class="quick-action">
                 <span class="quick-icon orange">🏆</span>
-                <span><strong>Ranking Siswa</strong><small>Lihat hasil dan peringkat berdasarkan kelas.</small></span>
+                <span><strong>Student Ranking</strong><small>View results and rankings based on classes.</small></span>
                 <b>›</b>
               </button>
               <button @click="$router.push('/student')" class="quick-action">
                 <span class="quick-icon purple">🎓</span>
-                <span><strong>Preview Area Siswa</strong><small>Cek tampilan belajar dari sisi siswa.</small></span>
+                <span><strong>Student Area</strong><small>Preview the student learning interface.</small></span>
                 <b>›</b>
               </button>
             </div>
