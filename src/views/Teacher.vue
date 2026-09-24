@@ -88,7 +88,7 @@
         <div class="dashboard-grid">
           <div class="panel quick-panel">
             <div class="panel-heading">
-              <div><h2>Akses Cepat</h2><p>Kelola aplikasi tanpa membuka banyak halaman.</p></div>
+              <div><h2>Quick Access</h2><p>Manage the application without opening multiple pages.</p></div>
             </div>
             <div class="quick-actions">
               <button @click="setSection('topics')" class="quick-action">
@@ -116,28 +116,28 @@
 
           <div class="panel summary-panel">
             <div class="panel-heading">
-              <div><h2>Ringkasan Kelas</h2><p>Kelas yang tersedia di sistem.</p></div>
+              <div><h2>Class Summary</h2><p>Classes available in the system.</p></div>
             </div>
             <div v-if="availableLevels.length" class="class-list">
               <div v-for="level in availableLevels" :key="level" class="class-row">
                 <span class="class-dot"></span>
                 <span>{{ level }}</span>
-                <small>Aktif</small>
+                <small>Active</small>
               </div>
             </div>
-            <div v-else class="empty-state">Belum ada kelas.</div>
+            <div v-else class="empty-state">No classes available.</div>
           </div>
         </div>
 
         <div class="panel recent-panel">
           <div class="panel-heading">
-            <div><h2>Informasi Sistem</h2><p>Data diperbarui otomatis dari Firebase.</p></div>
+            <div><h2>System Information</h2><p>Data updated automatically from Firebase.</p></div>
             <span class="live-badge">● REALTIME</span>
           </div>
           <div class="info-grid">
-            <div><strong>{{ topicsList.length }}</strong><span>Topik tersimpan</span></div>
-            <div><strong>{{ availableLevels.length }}</strong><span>Kelas tersedia</span></div>
-            <div><strong>{{ logs.length }}</strong><span>Aktivitas terbaru</span></div>
+            <div><strong>{{ topicsList.length }}</strong><span>Topics saved</span></div>
+            <div><strong>{{ availableLevels.length }}</strong><span>Classes available</span></div>
+            <div><strong>{{ logs.length }}</strong><span>Recent activities</span></div>
           </div>
         </div>
       </section>
@@ -147,11 +147,11 @@
         <div class="panel">
           <div class="panel-heading">
             <div>
-              <h2>Tambah Topik Baru</h2>
-              <p>Masukkan kelas, waktu, pertanyaan, dan jawaban target.</p>
+              <h2>Add New Topic</h2>
+              <p>Enter class, time, questions, and target answers.</p>
             </div>
             <button class="collapse-btn" @click="isExpanded = !isExpanded">
-              {{ isExpanded ? 'Sembunyikan Form' : 'Tampilkan Form' }}
+              {{ isExpanded ? 'Hide Form' : 'Show Form' }}
             </button>
           </div>
 
@@ -200,16 +200,16 @@
               </div>
             </div>
             <button class="save-btn" :disabled="isUploading" @click="saveTopic">
-              {{ isUploading ? 'Menyimpan...' : '＋ Simpan Topik & Kelas' }}
+              {{ isUploading ? 'Saving...' : '＋ Save Topic & Class' }}
             </button>
           </div>
         </div>
 
         <div class="panel">
           <div class="panel-heading">
-            <div><h2>Daftar Topik</h2><p>{{ topicsList.length }} topik tersimpan.</p></div>
+            <div><h2>Topic List</h2><p>{{ topicsList.length }} topics saved.</p></div>
           </div>
-          <div v-if="topicsList.length === 0" class="empty-state">Belum ada topik tersimpan di database.</div>
+          <div v-if="topicsList.length === 0" class="empty-state">No topics saved in the database.</div>
           <div v-else class="topic-list">
             <div v-for="topic in topicsList" :key="topic.id" class="topic-card">
               <div class="topic-card-top">
@@ -218,15 +218,15 @@
                   <span class="level-badge">{{ topic.targetLevel }}</span>
                 </div>
                 <div class="topic-actions">
-                  <button class="small-btn voice" @click="speakAllQuestions(topic.questions)">🔊 Baca</button>
-                  <button class="small-btn danger" @click="deleteTopic(topic.id, topic.title)">🗑 Hapus</button>
+                  <button class="small-btn voice" @click="speakAllQuestions(topic.questions)">🔊 Read</button>
+                  <button class="small-btn danger" @click="deleteTopic(topic.id, topic.title)">🗑 Delete</button>
                 </div>
               </div>
               <div v-if="topic.imageUrl" class="topic-image-preview">
                 <img :src="topic.imageUrl" alt="Topic Image Preview" />
               </div>
               <details class="question-details">
-                <summary>Lihat {{ topic.questions?.length || 0 }} pertanyaan & jawaban</summary>
+                <summary>Lihat {{ topic.questions?.length || 0 }} Questions and Answers</summary>
                 <ol>
                   <li v-for="(q, index) in topic.questions" :key="index">
                     <div class="q-text"><strong>Q:</strong> "{{ q }}"
@@ -248,8 +248,8 @@
         <div class="panel ranking-panel">
           <div class="panel-heading">
             <div>
-              <h2>Ranking Siswa</h2>
-              <p>Peringkat siswa berdasarkan hasil latihan yang tersimpan di Firebase.</p>
+              <h2>Student Ranking</h2>
+              <p>Student rankings based on saved practice results in Firebase.</p>
             </div>
           </div>
           <Ranking :embedded="true" />
@@ -262,16 +262,16 @@
           <div class="filter-left">
             <label>Filter Kelas</label>
             <select v-model="selectedClassFilter" @change="setupRealtimeListeners" class="form-select">
-              <option value="">Semua Kelas</option>
+              <option value="">All Classes</option>
               <option v-for="lvl in availableLevels" :key="lvl" :value="lvl">{{ lvl }}</option>
             </select>
           </div>
-          <button class="danger-btn" @click="clearLogsData" :disabled="logs.length === 0">🗑 Hapus Log</button>
+          <button class="danger-btn" @click="clearLogsData" :disabled="logs.length === 0">🗑 Delete Logs</button>
         </div>
 
         <div class="panel">
           <div class="panel-heading">
-            <div><h2>Aktivitas Siswa</h2><p>Monitoring aktivitas siswa secara realtime.</p></div>
+            <div><h2>Student Activities</h2><p>Monitoring student activities in real-time.</p></div>
             <span class="live-badge">● REALTIME</span>
           </div>
           <div class="log-list">
@@ -283,7 +283,7 @@
               </div>
               <small>{{ log.targetLevel || '-' }}</small>
             </div>
-            <div v-if="logs.length === 0" class="empty-state">Belum ada aktivitas interaksi dari siswa di kelas ini.</div>
+            <div v-if="logs.length === 0" class="empty-state">No student activities to display.</div>
           </div>
         </div>
       </section>
